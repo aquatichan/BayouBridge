@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult } from "@/lib/types";
+import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult, TaskUpdate } from "@/lib/types";
 import { classify, extractWithRules, occupancyCheck } from "./evidence";
 import { fallbackReason, withTimeout } from "./util";
 import { summarizeIssues } from "./validate";
@@ -33,6 +33,30 @@ interface Task {
 
 // Rough minutes a caseworker spends on each step by hand (from navigator
 // interviews to be done this week — placeholders until then).
+/** Which part of the case each task fills in, sent to `onState` when it finishes. */
+const SLICES: Record<string, (keyof CaseState)[]> = {
+  occupancy: ["extractions"], people: ["people"], needs: ["needs"], conflicts: ["conflicts"], match: ["matches"],
+  gaps: ["evidenceScore", "followUp"], plan: ["plan"], safety: ["plan"], graph: ["graph"],
+};
+
+const LABELS: Record<string, string> = {
+  occupancy: "Checking proof of occupancy", people: "Resolving people", needs: "Building needs list",
+  conflicts: "Checking for conflicts", match: "Matching recovery pathways", gaps: "Scoring evidence",
+  plan: "Building the plan", safety: "Applying approval gates", graph: "Updating the graph",
+};
+
+/** Optional live hooks. Callers that pass none get exactly the old behavior. */
+export interface RunHooks {
+  /** Every activity-log event, as it is logged. */
+  onEvent?: (e: ActivityEvent) => void;
+  /** The slice of state a task produced, right after it finishes (plus the initial state once at the start). */
+  onState?: (partial: Partial<CaseState>) => void;
+  /** A task started or finished. All extraction tasks start together. */
+  onTask?: (t: TaskUpdate) => void;
+  /** Aborts in-flight Claude calls (e.g. the browser disconnected); the run then finishes on rules. */
+  signal?: AbortSignal;
+}
+
 const MANUAL_MINUTES = { extract: 8, occupancy: 5, people: 5, conflicts: 10, match: 25, gaps: 10, plan: 15, graph: 5 };
 
 export async function runCase(input: {
@@ -40,10 +64,17 @@ export async function runCase(input: {
   documents: CaseDocument[]; extractor?: Extractor; limits?: Partial<RunLimits>;
   /** Extractions from an earlier run to reuse by document id (incremental re-run when a new document arrives). */
   reuse?: ExtractionResult[];
-}): Promise<CaseState> {
+} & RunHooks): Promise<CaseState> {
   const events: ActivityEvent[] = [];
-  const log = (agent: AgentName, action: string, detail: string, refs?: string[], minutesSaved?: number) =>
-    events.push({ seq: events.length + 1, agent, action, detail, refs, minutesSaved });
+  const log = (agent: AgentName, action: string, detail: string, refs?: string[], minutesSaved?: number) => {
+    const e: ActivityEvent = { seq: events.length + 1, agent, action, detail, refs, minutesSaved };
+    events.push(e);
+    input.onEvent?.(e);
+  };
+  const docOrder = (a: ExtractionResult, b: ExtractionResult) =>
+    input.documents.findIndex((d) => d.id === a.docId) - input.documents.findIndex((d) => d.id === b.docId);
+  // Sent before each "Read"/"Reused" event, so the UI never shows an event without its data.
+  const publishExtractions = () => input.onState?.({ extractions: [...state.extractions].sort(docOrder) });
 
   const state: CaseState = {
     caseId: input.caseId, householdName: input.householdName, address: input.address, disaster: input.disaster,
@@ -60,6 +91,8 @@ export async function runCase(input: {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const runDeadline = Date.now() + limits.runMs;
   const breaker = new AbortController(); // aborts in-flight Claude calls once tripped
+  if (input.signal?.aborted) breaker.abort();
+  else input.signal?.addEventListener("abort", () => breaker.abort(), { once: true });
   let failures = 0;
   let settled = 0;
   const reused = new Map((input.reuse ?? []).map((e) => [e.docId, e]));
@@ -106,11 +139,13 @@ export async function runCase(input: {
         const prev = reused.get(d.id);
         if (prev) {
           state.extractions.push(prev);
+          publishExtractions();
           log("Evidence Agent", `Reused ${d.filename}`, `Already read in the previous run: ${prev.facts.length} facts (${prev.method}).`, [d.id]);
           return;
         }
         const ex = await extract(d);
         state.extractions.push(ex);
+        publishExtractions();
         const types = ex.evidenceTypes.length ? ex.evidenceTypes.join(", ").replaceAll("_", " ")
           : d.kind === "utility_bill" ? "utility bill (occupancy check next)" : "context only";
         log("Evidence Agent", `Read ${d.filename}`, `${ex.facts.length} facts extracted (${ex.method}${summarizeIssues(ex.issues)}). Classified as: ${types}.`, [d.id], MANUAL_MINUTES.extract);
@@ -196,14 +231,33 @@ export async function runCase(input: {
 
   // Run ready tasks in waves; independent tasks in a wave run in parallel.
   const done = new Set<string>();
+  const update = (t: Task, status: TaskUpdate["status"]) => input.onTask?.({
+    id: t.id, agent: t.agent, status,
+    label: LABELS[t.id] ?? `Reading ${input.documents.find((d) => `extract:${d.id}` === t.id)?.filename ?? t.id}`,
+  });
+  const publish = (t: Task) => {
+    const keys = SLICES[t.id]; // extraction tasks publish their own slice (publishExtractions)
+    if (!input.onState || !keys) return;
+    const partial: Partial<CaseState> = {};
+    for (const k of keys) Object.assign(partial, { [k]: k === "extractions" ? [...state.extractions].sort(docOrder) : state[k] });
+    input.onState(partial);
+  };
+  input.onState?.({ ...state, events: [] });
   log("Coordinator", "Started case run", `${input.documents.length} documents queued. ${tasks.length} tasks in the graph.`);
   while (done.size < tasks.length) {
     const ready = tasks.filter((t) => !done.has(t.id) && t.deps.every((d) => done.has(d)));
     if (!ready.length) throw new Error("Task graph has a cycle or a missing dependency");
-    await Promise.all(ready.map(async (t) => { await t.run(); done.add(t.id); }));
+    await Promise.all(ready.map(async (t) => {
+      update(t, "started");
+      const pending = t.run();
+      if (pending) await pending; // sync tasks publish right after their event, with no gap
+      done.add(t.id);
+      update(t, "done");
+      publish(t);
+    }));
   }
   // Keep document order stable regardless of which extraction finished first.
-  state.extractions.sort((a, b) => input.documents.findIndex((d) => d.id === a.docId) - input.documents.findIndex((d) => d.id === b.docId));
+  state.extractions.sort(docOrder);
   const claude = state.extractions.filter((e) => e.method === "claude").length;
   const rules = state.extractions.length - claude;
   state.extraction = {

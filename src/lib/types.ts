@@ -184,6 +184,14 @@ export interface ExtractionSummary {
   mode: "claude" | "rules" | "mixed";
 }
 
+/** Live status of one coordinator task, for showing agents "working" while they run. */
+export interface TaskUpdate {
+  id: string; // "extract:<docId>", "people", "match", ...
+  agent: AgentName;
+  label: string;
+  status: "started" | "done";
+}
+
 export interface CaseState {
   caseId: string;
   householdName: string;

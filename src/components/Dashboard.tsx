@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, PlanTask } from "@/lib/types";
+import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, PlanTask, TaskUpdate } from "@/lib/types";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import RecoveryGraph from "./RecoveryGraph";
 import Capybara from "./Capybara";
@@ -41,6 +41,28 @@ function Card({ title, right, children, className = "" }: { title: string; right
   );
 }
 
+function Spinner() {
+  return <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />;
+}
+
+/** Split an SSE text buffer into complete frames; returns the frames and the unfinished rest. */
+function parseSSE(buf: string): { frames: { event: string; data: string }[]; rest: string } {
+  const frames: { event: string; data: string }[] = [];
+  let i;
+  while ((i = buf.indexOf("\n\n")) >= 0) {
+    const raw = buf.slice(0, i);
+    buf = buf.slice(i + 2);
+    let event = "message";
+    const data: string[] = [];
+    for (const line of raw.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+    }
+    if (data.length) frames.push({ event, data: data.join("\n") }); // comment-only frames are keep-alives
+  }
+  return { frames, rest: buf };
+}
+
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
@@ -50,9 +72,11 @@ export default function Dashboard({ household, documents, followUps, today }: {
 }) {
   const [state, setState] = useState<CaseState | null>(null);
   const [mode, setMode] = useState<ExtractionSummary | null>(null);
-  // `events` is the activity feed shown so far; `queue` holds events still to replay.
+  // `events` is the activity feed shown so far; `queue` holds events still to replay
+  // (only used by the non-streaming fallback). `tasks` is live agent status from the stream.
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [queue, setQueue] = useState<ActivityEvent[]>([]);
+  const [tasks, setTasks] = useState<Record<string, TaskUpdate>>({});
   const [fetching, setFetching] = useState(false);
   const running = fetching || queue.length > 0;
   const [error, setError] = useState<string | null>(null);
@@ -68,22 +92,69 @@ export default function Dashboard({ household, documents, followUps, today }: {
    */
   async function run(addDocumentIds?: string[]) {
     const followUp = Boolean(addDocumentIds?.length);
-    setFetching(true); setError(null); setQueue([]);
-    if (!followUp) { setState(null); setEvents([]); setApproved({}); }
+    const before = followUp ? events : []; // a follow-up run's events are appended to these
+    setFetching(true); setError(null); setQueue([]); setTasks({});
+    if (!followUp) { setState(null); setEvents([]); setApproved({}); setMode(null); }
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(followUp ? { addDocumentIds } : {}),
+    };
     try {
-      const res = await fetch("/api/run", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(followUp ? { addDocumentIds } : {}),
-      });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data = (await res.json()) as { state: CaseState; extraction: ExtractionSummary };
-      setState(data.state); setMode(data.state.extraction ?? data.extraction); setQueue(data.state.events);
+      if (!(await runStreamed(init, before, followUp))) await runReplayed(init, before);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setFetching(false);
+      setFetching(false); setTasks({});
     }
+  }
+
+  /** Live run over SSE. Returns false (without throwing) if streaming isn't available, so the caller can fall back. */
+  async function runStreamed(init: RequestInit, before: ActivityEvent[], followUp: boolean): Promise<boolean> {
+    let res: Response;
+    try { res = await fetch("/api/run/stream", init); } catch { return false; }
+    if (res.status === 400) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Bad request");
+    if (!res.ok || !res.body || !res.headers.get("content-type")?.includes("text/event-stream")) return false;
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return false; // the stream ended without a "done" frame
+        const parsed = parseSSE(buf + value);
+        buf = parsed.rest;
+        for (const f of parsed.frames) {
+          const data = JSON.parse(f.data);
+          if (f.event === "task") setTasks((t) => ({ ...t, [data.id]: data as TaskUpdate }));
+          else if (f.event === "agent") setEvents((ev) => [...ev, data as ActivityEvent]);
+          else if (f.event === "state") {
+            const part = data as Partial<CaseState>;
+            setState((prev) => {
+              // The first frame is the empty starting state. On a follow-up run keep the
+              // current cards and take only the new document list; slices replace the rest.
+              if (part.caseId && prev && followUp) return { ...prev, documents: part.documents ?? prev.documents };
+              return { ...(prev ?? (part as CaseState)), ...part };
+            });
+          } else if (f.event === "done") {
+            const d = data as { state: CaseState; extraction: ExtractionSummary };
+            setState(d.state); setMode(d.extraction); setEvents([...before, ...d.state.events]);
+            return true;
+          } else if (f.event === "error") return false;
+        }
+      }
+    } catch {
+      return false;
+    } finally {
+      reader.cancel().catch(() => {});
+    }
+  }
+
+  /** Fallback: run on /api/run and replay the finished log one event at a time. */
+  async function runReplayed(init: RequestInit, before: ActivityEvent[]) {
+    const res = await fetch("/api/run", init);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const data = (await res.json()) as { state: CaseState; extraction: ExtractionSummary };
+    setEvents(before); setState(data.state); setMode(data.state.extraction ?? data.extraction); setQueue(data.state.events);
   }
 
   // Replay the agent log one event at a time so the run is watchable.
@@ -101,6 +172,8 @@ export default function Dashboard({ household, documents, followUps, today }: {
   const has = (action: string) => events.some((e) => e.action === action);
   const readDocs = new Set(events.filter((e) => e.action.startsWith("Read ") || e.action.startsWith("Reused ")).flatMap((e) => e.refs ?? []));
   const minutes = events.reduce((s, e) => s + (e.minutesSaved ?? 0), 0);
+  // Agents working right now. A document's spinner stops as soon as its "Read" event is in.
+  const working = Object.values(tasks).filter((t) => t.status === "started" && !(t.id.startsWith("extract:") && readDocs.has(t.id.slice(8))));
 
   const s = state;
   const docs = s?.documents ?? documents;
@@ -323,7 +396,7 @@ export default function Dashboard({ household, documents, followUps, today }: {
                       {t.status === "ready" && <span className="rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] font-medium text-bayou">Ready</span>}
                       {t.status === "needs_approval" && (approved[t.id]
                         ? <span className="rounded-full bg-moss px-2 py-0.5 text-[11px] font-medium text-white">Approved · sent to sandbox</span>
-                        : <button onClick={() => approve(t)} className="rounded-full border border-bayou px-3 py-1 text-xs font-semibold text-bayou hover:bg-bayou hover:text-white">Approve</button>)}
+                        : <button onClick={() => approve(t)} disabled={running} className="rounded-full border border-bayou px-3 py-1 text-xs font-semibold text-bayou hover:bg-bayou hover:text-white disabled:opacity-50">Approve</button>)}
                     </li>
                   ))}
                 </ol>
@@ -334,6 +407,15 @@ export default function Dashboard({ household, documents, followUps, today }: {
           <div className="space-y-4">
             {/* Activity */}
             <Card title="Agent activity">
+              {working.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1" aria-live="polite">
+                  {working.map((t) => (
+                    <span key={t.id} className="flex items-center gap-1 rounded-full bg-bg px-2 py-0.5 text-[10px] text-muted">
+                      <Spinner /> {t.agent}: {t.label}
+                    </span>
+                  ))}
+                </div>
+              )}
               {events.length ? (
                 <ol ref={feedRef} className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
                   {events.map((e, i) => (
@@ -364,7 +446,9 @@ export default function Dashboard({ household, documents, followUps, today }: {
                           <span className="block truncate font-medium">{d.title}</span>
                           <span className="block truncate text-[11px] text-muted">{d.filename}{d.language === "es" ? " · Spanish" : ""}</span>
                         </span>
-                        <span className={`text-[11px] ${read ? "text-moss" : "text-muted"}`}>{read ? `${n} facts` : running ? "reading…" : "queued"}</span>
+                        <span className={`flex items-center gap-1 text-[11px] ${read ? "text-moss" : "text-muted"}`}>
+                          {read ? (n ? `${n} facts` : "read") : tasks[`extract:${d.id}`]?.status === "started" ? <><Spinner /> reading…</> : "queued"}
+                        </span>
                       </button>
                     </li>
                   );

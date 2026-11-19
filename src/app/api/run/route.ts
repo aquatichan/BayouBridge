@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runDemoCase, UnknownDocumentError } from "@/lib/runDemo";
+import { readRunRequest, runDemoCase, UnknownDocumentError } from "@/lib/runDemo";
 
 export const dynamic = "force-dynamic";
 // Worst case with Claude is ~15 s (per-document limit, documents run in parallel).
@@ -13,13 +13,10 @@ export const maxDuration = 60;
 // Body (optional): { addDocumentIds?: string[] } adds synthetic follow-up
 // documents by id from the server's allow-list (e.g. the September electric bill).
 export async function POST(req: Request) {
-  const body: unknown = await req.json().catch(() => ({}));
-  const ids = (body as { addDocumentIds?: unknown })?.addDocumentIds;
-  if (ids !== undefined && !(Array.isArray(ids) && ids.every((x) => typeof x === "string"))) {
-    return NextResponse.json({ error: "addDocumentIds must be an array of document ids" }, { status: 400 });
-  }
+  const parsed = await readRunRequest(req);
+  if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
   try {
-    const state = await runDemoCase({ addDocumentIds: ids as string[] | undefined });
+    const state = await runDemoCase(parsed);
     // `extraction` reports what actually ran per document, not whether a key is set.
     return NextResponse.json({ state, extraction: state.extraction });
   } catch (err) {
