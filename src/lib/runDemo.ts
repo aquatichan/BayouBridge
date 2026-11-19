@@ -12,17 +12,6 @@ export const claudeConfigured = () => Boolean(process.env.ANTHROPIC_API_KEY);
 
 export class UnknownDocumentError extends Error {}
 
-/** Parse the optional `{ addDocumentIds }` body shared by /api/run and /api/run/stream. */
-export async function readRunRequest(req: Request): Promise<{ addDocumentIds?: string[] } | { error: string }> {
-  const body: unknown = await req.json().catch(() => ({}));
-  const ids = (body as { addDocumentIds?: unknown } | null)?.addDocumentIds;
-  if (ids === undefined) return {};
-  if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string")) return { error: "addDocumentIds must be an array of document ids" };
-  const unknown = ids.filter((id) => !followUpDocuments.some((d) => d.id === id));
-  if (unknown.length) return { error: `Unknown document id: ${unknown.join(", ")}` };
-  return { addDocumentIds: ids };
-}
-
 export interface DemoRunOptions extends RunHooks {
   /**
    * Follow-up documents to add, by id. Only ids in `followUpDocuments` are

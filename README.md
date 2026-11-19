@@ -11,7 +11,7 @@ npm install
 npm run dev        # http://localhost:3000, then press "Run agents"
 ```
 
-Optional: set `ANTHROPIC_API_KEY` in `.env.local` to have Claude do the document extraction. Without a key, a rules-based extractor runs instead, so the demo always works offline. Everything after extraction is deterministic code.
+Optional: set `ANTHROPIC_API_KEY` in `.env.local` to have Claude do the document extraction (and to read uploaded photos and PDFs). Without a key, a rules-based extractor runs instead, so the demo always works offline. Everything after extraction is deterministic code.
 
 `npx tsx scripts/run-demo.ts` runs the whole pipeline in the terminal and prints the agent log.
 
@@ -54,8 +54,10 @@ documents ─▶ Evidence Agent ─▶ people · needs · conflicts ─▶ Recov
 ## Guardrails
 
 - Recommendations are labeled "possible match" and link to their source. BayouBridge never claims eligibility.
-- Nothing is sent or submitted without a navigator's approval. Sends go to a sandbox outbox only.
-- Synthetic data only. No real personal information is stored.
+- Nothing is sent or submitted without approval (the household's own, or a navigator's in the classic view). Sends go to a sandbox outbox only.
+- The sample case and the classic demo are synthetic.
+- Real uploads ("Start my case") need consent first. They are kept in server memory only, never on disk or in a database, and are deleted after 2 hours or at once with "Delete my case". With an `ANTHROPIC_API_KEY` set, photos and PDFs are sent to Anthropic's Claude API to be read; without one they aren't read at all, and the case says so. Photos are resized in the browser first, which also drops their GPS location. Document text is never logged.
+- Limits: 10 files per case, 8 MB each; JPEG, PNG, WebP, GIF, PDF or plain text.
 
 ## Next slices
 

@@ -159,6 +159,9 @@ const SOURCE: Partial<Record<DocKind, { en: string; es: string }>> = {
   insurance_email: { en: "the insurer", es: "la aseguradora" },
   estimate: { en: "the contractor's estimate", es: "el presupuesto del contratista" },
   utility_bill: { en: "the utility bill", es: "la factura" },
+  bank_statement: { en: "the bank statement", es: "el estado de cuenta" },
+  insurance_policy: { en: "the insurance policy", es: "la póliza de seguro" },
+  lease: { en: "the lease", es: "el contrato de renta" },
   voice_note: { en: "your voice note", es: "su nota de voz" },
   photo: { en: "a photo", es: "una foto" },
 };

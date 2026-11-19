@@ -7,7 +7,18 @@ export type DocKind =
   | "fema_letter"
   | "insurance_email"
   | "voice_note"
-  | "utility_bill";
+  | "utility_bill"
+  // Kinds that real uploads can be (Claude decides when it reads the file)
+  | "bank_statement"
+  | "lease"
+  | "id_card"
+  | "insurance_policy"
+  | "medical_letter"
+  | "receipt"
+  | "other";
+
+/** Kinds that can prove someone lived at the address before the storm (with a period that ends before the date of loss). */
+export const OCCUPANCY_KINDS: DocKind[] = ["utility_bill", "bank_statement"];
 
 /** Evidence categories that recovery programs ask for. */
 export type EvidenceType =
@@ -34,6 +45,8 @@ export interface CaseDocument {
   language: "en" | "es";
   /** Optional illustration shown in the UI (photos). */
   preview?: string;
+  /** Where it came from. Uploaded files are read by Claude, which fills in kind, title and text. */
+  source?: "sample" | "upload" | "statement";
 }
 
 export type FactType =
@@ -73,6 +86,8 @@ export interface ExtractionResult {
   method: "rules" | "claude";
   /** What validation changed in Claude's output: "repaired: ...", "dropped: ...", "filled from rules: ...". */
   issues?: string[];
+  /** For uploaded files: what reading the file found out about the document itself. */
+  document?: Pick<CaseDocument, "kind" | "title" | "language" | "text">;
 }
 
 export type NeedKey =

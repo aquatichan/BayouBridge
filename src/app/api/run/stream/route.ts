@@ -1,8 +1,9 @@
-import { readRunRequest, runDemoCase } from "@/lib/runDemo";
+import { CaseError } from "@/lib/cases";
+import { readRunRequest, runRequested } from "@/lib/runRequest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /** Minimum gap between activity events on the wire. Rules-mode runs finish in
  *  milliseconds; this keeps them watchable. Real Claude latency is never padded. */
@@ -21,7 +22,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Body (optional): { addDocumentIds?: string[] }, same allow-list as /api/run.
 export async function POST(req: Request) {
   const parsed = await readRunRequest(req);
-  if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
+  if ("error" in parsed) return Response.json({ error: parsed.error }, { status: parsed.status });
 
   const enc = new TextEncoder();
   let closed = false;
@@ -63,8 +64,7 @@ export async function POST(req: Request) {
 
       const keepAlive = setInterval(() => write(": keep-alive\n\n"), KEEP_ALIVE_MS);
       try {
-        const state = await runDemoCase({
-          ...parsed,
+        const state = await runRequested(parsed, {
           onEvent: (e) => push("agent", e),
           onState: (s) => push("state", s),
           onTask: (t) => push("task", t),
@@ -73,9 +73,12 @@ export async function POST(req: Request) {
         await drain();
         send("done", { state, extraction: state.extraction });
       } catch (err) {
-        console.error("[BayouBridge] /api/run/stream failed:", err);
         await drain();
-        send("error", { message: "The agent pipeline failed. See the server log." });
+        if (err instanceof CaseError) send("error", { message: err.message });
+        else {
+          console.error("[BayouBridge] /api/run/stream failed:", err instanceof Error ? err.message : err);
+          send("error", { message: "The agent pipeline failed. See the server log." });
+        }
       } finally {
         clearInterval(keepAlive);
         if (!closed) {

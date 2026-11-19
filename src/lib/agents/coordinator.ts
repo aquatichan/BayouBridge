@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult, TaskUpdate } from "@/lib/types";
+import { OCCUPANCY_KINDS, type ActivityEvent, type AgentName, type CaseDocument, type CaseState, type ExtractionResult, type TaskUpdate } from "@/lib/types";
 import { classify, extractWithRules, occupancyCheck } from "./evidence";
 import { fallbackReason, withTimeout } from "./util";
 import { buildPacket } from "./packet";
@@ -90,7 +90,9 @@ export async function runCase(input: {
   let aliasNotes: string[] = [];
   /** Household wording (street, who uses medical equipment), read from the facts so far. */
   const ctx = () => caseContext(input.address, state.extractions);
-  const bills = input.documents.filter((d) => d.kind === "utility_bill");
+  // Bills and statements can only count once every document is read. Uploads ("other" until
+  // Claude reads them) might turn out to be one, so they get the check too.
+  const mayHaveBills = input.documents.some((d) => OCCUPANCY_KINDS.includes(d.kind) || d.source === "upload");
 
   // ── Claude extraction with time limits, fallback and a circuit breaker ──
   // Every document always ends up with an extraction: if Claude is slow,
@@ -157,20 +159,26 @@ export async function runCase(input: {
         }
         const ex = await extract(d);
         state.extractions.push(ex);
+        // Reading an uploaded file tells us what it is (kind, title) and gives us its text.
+        if (ex.document) {
+          state.documents = state.documents.map((x) => (x.id === d.id ? { ...x, ...ex.document } : x));
+          input.onState?.({ documents: state.documents });
+        }
         publishExtractions();
+        const kind = ex.document?.kind ?? d.kind;
         const types = ex.evidenceTypes.length ? ex.evidenceTypes.join(", ").replaceAll("_", " ")
-          : d.kind === "utility_bill" ? "utility bill (occupancy check next)" : "context only";
+          : OCCUPANCY_KINDS.includes(kind) ? `${kind.replace("_", " ")} (occupancy check next)` : "context only";
         log("Evidence Agent", `Read ${d.filename}`, `${ex.facts.length} facts extracted (${ex.method}${summarizeIssues(ex.issues)}). Classified as: ${types}.`, [d.id], MANUAL_MINUTES.extract);
       },
     })),
     // Utility bills only count as proof of occupancy once every document is read:
     // the bill must pre-date the earliest date of loss any document states.
-    ...(bills.length ? [{
+    ...(mayHaveBills ? [{
       id: "occupancy", agent: "Evidence Agent" as const, deps: input.documents.map((d) => `extract:${d.id}`),
       run: () => {
         const losses = state.extractions.flatMap((e) => e.facts).filter((f) => f.type === "date_of_loss" && f.normalized).map((f) => f.normalized!).sort();
         const ctx = { address: input.address, dateOfLoss: losses[0] };
-        for (const d of bills) {
+        for (const d of state.documents.filter((x) => OCCUPANCY_KINDS.includes(x.kind))) {
           const i = state.extractions.findIndex((e) => e.docId === d.id);
           if (i < 0) continue;
           const ex = state.extractions[i];
@@ -204,7 +212,7 @@ export async function runCase(input: {
       },
     },
     {
-      id: "match", agent: "Recovery-Match Agent", deps: ["needs", ...(bills.length ? ["occupancy"] : [])],
+      id: "match", agent: "Recovery-Match Agent", deps: ["needs", ...(mayHaveBills ? ["occupancy"] : [])],
       run: () => {
         state.matches = matchPrograms(state.documents, state.extractions, state.needs, state.today, ctx());
         log("Recovery-Match Agent", "Matched recovery pathways", `${state.matches.length} possible matches from the verified source list: ${state.matches.map((m) => m.name).join(", ")}.`, undefined, MANUAL_MINUTES.match);

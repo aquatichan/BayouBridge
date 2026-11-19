@@ -21,6 +21,7 @@ const AGENT_COLOR: Record<AgentName, string> = {
 
 const KIND_ICON: Record<CaseDocument["kind"], string> = {
   photo: "📷", estimate: "🧾", fema_letter: "✉️", insurance_email: "📧", voice_note: "🎙️", utility_bill: "💡",
+  bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", other: "📎",
 };
 
 function fmtDate(iso?: string) {

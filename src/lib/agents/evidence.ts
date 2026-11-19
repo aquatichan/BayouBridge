@@ -1,4 +1,4 @@
-import type { CaseDocument, EvidenceType, ExtractionResult, Fact, FactType } from "@/lib/types";
+import { OCCUPANCY_KINDS, type CaseDocument, type EvidenceType, type ExtractionResult, type Fact, type FactType } from "@/lib/types";
 
 // Evidence Agent — rules-based extractor.
 // Works offline with no API key. When ANTHROPIC_API_KEY is set, the /api/run
@@ -81,7 +81,7 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
     add("deadline", "Documents due to insurer", m[1], q, `insurance_due:${parseDate(m[1])}`, 0.9));
 
   // Billing period (utility bills): the end date shows whether the bill pre-dates the storm
-  find(new RegExp(`Billing period:\\s*${DATE_RE}\\s*(?:–|—|-|to|through)\\s*${DATE_RE}`, "i"), (m, q) =>
+  find(new RegExp(`(?:Billing|Statement) period:\\s*${DATE_RE}\\s*(?:–|—|-|to|through)\\s*${DATE_RE}`, "i"), (m, q) =>
     add("billing_period", "Billing period", `${m[1]} – ${m[2]}`, q, `billing_end:${parseDate(m[2])}`, 0.95));
 
   // Appointments
@@ -181,7 +181,11 @@ export function classify(doc: CaseDocument, facts: Fact[], ctx?: ClassifyContext
   if (doc.kind === "estimate") out.add("repair_estimate");
   if (doc.kind === "fema_letter") out.add("fema_determination");
   if (doc.kind === "insurance_email") out.add("insurance_correspondence");
-  if (doc.kind === "utility_bill" && ctx && occupancyCheck(facts, ctx).ok) out.add("proof_of_occupancy");
+  if (OCCUPANCY_KINDS.includes(doc.kind) && ctx && occupancyCheck(facts, ctx).ok) out.add("proof_of_occupancy");
+  if (doc.kind === "id_card") out.add("proof_of_identity");
+  if (doc.kind === "insurance_policy") out.add("insurance_policy");
+  if (doc.kind === "medical_letter") out.add("medical_need_documentation");
+  if (doc.kind === "receipt") out.add("loss_receipts");
   if (doc.kind === "voice_note" && facts.some((f) => f.type === "need")) out.add("loss_statement");
   return [...out];
 }
