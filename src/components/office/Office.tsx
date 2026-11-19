@@ -24,15 +24,21 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export default function Office({
   director, className = "", hud = true, followClass = "left-3 top-3", chipsClass = "inset-x-2 bottom-2", rightInset = 0,
+  follow, interactive = true,
 }: {
   director: OfficeDirector; className?: string; hud?: boolean;
   /** Where the "Following" card and the agent chips sit (Tailwind position classes). */
   followClass?: string; chipsClass?: string;
   /** Pixels on the right covered by a panel, so the camera centers the subject in what's left. */
   rightInset?: number;
+  /** Set to drive the camera from outside (e.g. the landing page's scroll story). */
+  follow?: FollowMode;
+  /** false: no drag-to-look or wheel zoom, so the office never captures page scrolling. */
+  interactive?: boolean;
 }) {
   const snap = useSyncExternalStore(director.subscribe, director.getSnapshot, director.getSnapshot);
-  const [mode, setMode] = useState<FollowMode>("auto");
+  const [chosen, setMode] = useState<FollowMode>("auto");
+  const mode = follow ?? chosen;
   const view = useRef<ViewControl>({ az: 0, zoom: 1 });
   const box = useRef<HTMLDivElement>(null);
   // Name tags and station signs: ordinary DOM, positioned each frame by the scene.
@@ -42,7 +48,7 @@ export default function Office({
   // Drag sideways to look around; scroll (or pinch-zoom trackpads) to zoom.
   useEffect(() => {
     const el = box.current;
-    if (!el) return;
+    if (!el || !interactive) return;
     let down: { x: number } | null = null;
     const onDown = (e: PointerEvent) => { down = { x: e.clientX }; };
     const onMove = (e: PointerEvent) => {
@@ -65,7 +71,7 @@ export default function Office({
       window.removeEventListener("pointerup", onUp);
       el.removeEventListener("wheel", onWheel);
     };
-  }, []);
+  }, [interactive]);
 
   const followed = mode === "auto" ? snap.follow : mode === "overview" ? null : mode;
   const focus = new Set<StationId>(snap.mascots.filter((m) => m.destination && (m.phase !== "idle" || m.id === followed)).map((m) => m.destination!));

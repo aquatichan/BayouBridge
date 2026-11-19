@@ -47,7 +47,10 @@ function useWide() {
   return wide;
 }
 
-export default function CaseApp() {
+/** Where the app opens: its own welcome, straight to consent ("Start a case"), or the sample case. */
+export type CaseAppStart = "welcome" | "consent" | "sample";
+
+export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart }) {
   const wide = useWide();
   const [lang, setLang] = useState<Lang>("en");
   const t = STRINGS[lang];
@@ -90,6 +93,17 @@ export default function CaseApp() {
     }).catch(() => {});
   }, []);
   const chooseLang = (l: Lang) => { setLang(l); try { localStorage.setItem(LANG_KEY, l); } catch { /* storage off */ } };
+
+  // Arriving from the landing page's buttons: skip the welcome card.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || start === "welcome") return;
+    opened.current = true;
+    if (start === "consent") setStep((s) => (s === "welcome" ? "consent" : s));
+    else void startSample();
+    // startSample is a plain function of this render; this runs once on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start]);
 
   /** Run the agents, live. `incremental` reuses what was already read; `newDocs` is how many papers land in the inbox. */
   const run = useCallback(async (id: string, opts: { incremental?: boolean; newDocs: number; addDocumentIds?: string[] }) => {

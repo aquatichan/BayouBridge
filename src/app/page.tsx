@@ -1,6 +1,6 @@
-import CaseApp from "@/components/app/CaseApp";
+import Landing from "@/components/landing/Landing";
 
-// The consumer app. The original caseworker dashboard lives at /classic.
+// The landing page. The household app is at /case; the caseworker dashboard at /classic.
 export default function Home() {
-  return <CaseApp />;
+  return <Landing />;
 }
