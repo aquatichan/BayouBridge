@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, PlanTask } from "@/lib/types";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import RecoveryGraph from "./RecoveryGraph";
@@ -45,56 +45,85 @@ function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-export default function Dashboard({ household, documents, today }: { household: Household; documents: CaseDocument[]; today: string }) {
+export default function Dashboard({ household, documents, followUps, today }: {
+  household: Household; documents: CaseDocument[]; followUps: CaseDocument[]; today: string;
+}) {
   const [state, setState] = useState<CaseState | null>(null);
   const [mode, setMode] = useState<ExtractionSummary | null>(null);
-  const [shown, setShown] = useState(0);
-  const [running, setRunning] = useState(false);
+  // `events` is the activity feed shown so far; `queue` holds events still to replay.
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [queue, setQueue] = useState<ActivityEvent[]>([]);
+  const [fetching, setFetching] = useState(false);
+  const running = fetching || queue.length > 0;
   const [error, setError] = useState<string | null>(null);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [lang, setLang] = useState<"en" | "es">("en");
   const [approved, setApproved] = useState<Record<string, boolean>>({});
-  const [extraEvents, setExtraEvents] = useState<ActivityEvent[]>([]);
   const feedRef = useRef<HTMLOListElement>(null);
 
-  async function run() {
-    setRunning(true); setError(null); setShown(0); setState(null); setApproved({}); setExtraEvents([]);
+  /**
+   * Run the agents. With `addDocumentIds` (a follow-up document arriving) the
+   * dashboard stays on screen, the cards update in place and the new run's
+   * events are appended to the log. Otherwise it starts from a clean slate.
+   */
+  async function run(addDocumentIds?: string[]) {
+    const followUp = Boolean(addDocumentIds?.length);
+    setFetching(true); setError(null); setQueue([]);
+    if (!followUp) { setState(null); setEvents([]); setApproved({}); }
     try {
-      const res = await fetch("/api/run", { method: "POST" });
+      const res = await fetch("/api/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(followUp ? { addDocumentIds } : {}),
+      });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = (await res.json()) as { state: CaseState; extraction: ExtractionSummary };
-      setState(data.state); setMode(data.state.extraction ?? data.extraction);
+      setState(data.state); setMode(data.state.extraction ?? data.extraction); setQueue(data.state.events);
     } catch (e) {
-      setError((e as Error).message); setRunning(false);
+      setError((e as Error).message);
+    } finally {
+      setFetching(false);
     }
   }
 
   // Replay the agent log one event at a time so the run is watchable.
   useEffect(() => {
-    if (!state || shown >= state.events.length) { if (state) setRunning(false); return; }
-    const t = setTimeout(() => setShown((s) => s + 1), shown === 0 ? 150 : 420);
+    if (!queue.length) return;
+    const t = setTimeout(() => {
+      setEvents((ev) => [...ev, queue[0]]);
+      setQueue((q) => q.slice(1));
+    }, events.length === 0 ? 150 : 420);
     return () => clearTimeout(t);
-  }, [state, shown]);
+  }, [queue, events.length]);
 
-  useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }); }, [shown, extraEvents]);
+  useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }); }, [events]);
 
-  const events = useMemo(() => [...(state?.events.slice(0, shown) ?? []), ...extraEvents], [state, shown, extraEvents]);
   const has = (action: string) => events.some((e) => e.action === action);
-  const readDocs = new Set(events.filter((e) => e.action.startsWith("Read ")).flatMap((e) => e.refs ?? []));
+  const readDocs = new Set(events.filter((e) => e.action.startsWith("Read ") || e.action.startsWith("Reused ")).flatMap((e) => e.refs ?? []));
   const minutes = events.reduce((s, e) => s + (e.minutesSaved ?? 0), 0);
 
   const s = state;
-  const doc = openDoc ? documents.find((d) => d.id === openDoc) : null;
+  const docs = s?.documents ?? documents;
+  const doc = openDoc ? docs.find((d) => d.id === openDoc) : null;
   const docFacts = s?.extractions.find((x) => x.docId === openDoc)?.facts ?? [];
+
+  // The synthetic electric bill the Follow-up Agent is asking for, if it hasn't arrived yet.
+  const bill = followUps.find((d) => d.kind === "utility_bill" && !docs.some((x) => x.id === d.id));
+  const canSendBill = Boolean(s && !running && bill && s.followUp?.evidence === "proof_of_occupancy");
+  const fema = s?.matches.find((m) => m.programId === "fema-appeal");
+  const cheer = !running && fema?.readiness === 1 && docs.length > documents.length
+    ? "The FEMA appeal has every document it needs now." : undefined;
 
   function approve(t: PlanTask) {
     setApproved((a) => ({ ...a, [t.id]: true }));
-    const seq = (s?.events.length ?? 0) + extraEvents.length + 1;
-    setExtraEvents((ev) => [
-      ...ev,
-      { seq, agent: "Safety Agent", action: "Approval recorded", detail: `Navigator approved: "${t.title}"`, minutesSaved: 0 },
-      { seq: seq + 1, agent: "Packet Agent", action: "Queued to sandbox outbox", detail: "Simulated send only. No real email or submission leaves BayouBridge.", minutesSaved: 6 },
-    ]);
+    setEvents((ev) => {
+      const seq = ev.length + 1;
+      return [
+        ...ev,
+        { seq, agent: "Safety Agent", action: "Approval recorded", detail: `Navigator approved: "${t.title}"`, minutesSaved: 0 },
+        { seq: seq + 1, agent: "Packet Agent", action: "Queued to sandbox outbox", detail: "Simulated send only. No real email or submission leaves BayouBridge.", minutesSaved: 6 },
+      ];
+    });
   }
 
   return (
@@ -121,7 +150,7 @@ export default function Dashboard({ household, documents, today }: { household: 
             <span className="rounded-full bg-bayou-soft px-2.5 py-1 font-semibold text-bayou" title="Estimated minutes of manual casework done by agents">
               ⏱ {minutes} min saved
             </span>
-            <button onClick={run} disabled={running}
+            <button onClick={() => run()} disabled={running}
               className="rounded-full bg-bayou px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b3a39] disabled:opacity-60">
               {running ? "Agents working…" : s ? "Run again" : "Run agents"}
             </button>
@@ -201,6 +230,15 @@ export default function Dashboard({ household, documents, today }: { household: 
               <div className="fade-up space-y-2">
                 <p className="rounded-xl bg-bayou-soft p-3 text-sm leading-relaxed text-ink">“{s.followUp[lang]}”</p>
                 <p className="text-xs text-muted">Why this one: {s.followUp.why}</p>
+                {canSendBill && bill && (
+                  <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
+                    <button onClick={() => run([bill.id])} disabled={running}
+                      className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-95 disabled:opacity-60">
+                      💡 Electric bill arrives
+                    </button>
+                    <span className="text-[11px] text-muted">Simulates the household forwarding their September bill (synthetic).</span>
+                  </div>
+                )}
               </div>
             ) : <Waiting>The Follow-up Agent asks for the one thing that unblocks the most.</Waiting>}
           </Card>
@@ -260,7 +298,7 @@ export default function Dashboard({ household, documents, today }: { household: 
                       <div className="font-semibold">{c.field}</div>
                       <ul className="my-1 text-xs">
                         {c.values.map((v, i) => (
-                          <li key={i}><b>{v.value}</b> <span className="text-muted">in {documents.find((d) => d.id === v.docId)?.title}</span></li>
+                          <li key={i}><b>{v.value}</b> <span className="text-muted">in {docs.find((d) => d.id === v.docId)?.title}</span></li>
                         ))}
                       </ul>
                       <p className="text-xs text-muted">{c.impact}</p>
@@ -298,8 +336,8 @@ export default function Dashboard({ household, documents, today }: { household: 
             <Card title="Agent activity">
               {events.length ? (
                 <ol ref={feedRef} className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                  {events.map((e) => (
-                    <li key={e.seq} className="fade-up text-xs">
+                  {events.map((e, i) => (
+                    <li key={i} className="fade-up text-xs">
                       <div className="flex items-center gap-1.5">
                         <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${AGENT_COLOR[e.agent]}`}>{e.agent}</span>
                         <span className="font-semibold">{e.action}</span>
@@ -313,9 +351,9 @@ export default function Dashboard({ household, documents, today }: { household: 
             </Card>
 
             {/* Evidence locker */}
-            <Card title={`Uploaded files (${documents.length})`}>
+            <Card title={`Uploaded files (${docs.length})`}>
               <ul className="space-y-1.5">
-                {documents.map((d) => {
+                {docs.map((d) => {
                   const read = readDocs.has(d.id);
                   const n = s?.extractions.find((x) => x.docId === d.id)?.facts.length ?? 0;
                   return (
@@ -379,7 +417,7 @@ export default function Dashboard({ household, documents, today }: { household: 
           BayouBridge uses only synthetic households and fabricated documents. It suggests possible pathways from cited
           sources and never decides eligibility or submits anything without a person&apos;s approval.
         </p>
-        <Capybara minutesSaved={minutes} />
+        <Capybara minutesSaved={minutes} cheer={cheer} />
       </footer>
     </div>
   );

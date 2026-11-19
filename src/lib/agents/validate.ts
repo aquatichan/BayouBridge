@@ -134,6 +134,13 @@ function checkNormalized(doc: CaseDocument, f: Fact): Checked {
       ]);
       return k ? fix(`${m[1]}:${k}`, `evidence → ${m[1]}:${k}`) : { drop: "unknown evidence type" };
     }
+    case "billing_period": {
+      if (/^billing_end:\d{4}-\d{2}-\d{2}$/.test(n ?? "") && isIsoDate(n!.slice(12))) return { fact: f };
+      // The end of the period is the last date in "September 1, 2026 – September 30, 2026".
+      const last = (s: string | undefined) => s?.split(/\s+(?:[–—-]|to|through|hasta|al)\s+/i).pop();
+      const d = firstDate(last(n?.replace(/^billing_end:/, "")), last(f.value), last(f.quote));
+      return d ? fix(`billing_end:${d}`, `billing period → billing_end:${d}`) : { drop: "no readable billing period end" };
+    }
     case "person": {
       if (!n || n === "role:mother" || n === "role:son") return { fact: f };
       const k = byKeyword(f, [[/mother|madre|mam[aá]/, "role:mother"], [/\bson\b|hijo/, "role:son"], [/applicant|head|self|main|policyholder|customer/, ""]]);

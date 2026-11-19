@@ -50,7 +50,8 @@ export type FactType =
   | "need"
   | "determination"
   | "exclusion"
-  | "mentions_evidence";
+  | "mentions_evidence"
+  | "billing_period";
 
 export interface Fact {
   id: string;

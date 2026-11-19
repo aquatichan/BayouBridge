@@ -1,5 +1,5 @@
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult } from "@/lib/types";
-import { extractWithRules } from "./evidence";
+import { classify, extractWithRules, occupancyCheck } from "./evidence";
 import { fallbackReason, withTimeout } from "./util";
 import { summarizeIssues } from "./validate";
 import {
@@ -33,11 +33,13 @@ interface Task {
 
 // Rough minutes a caseworker spends on each step by hand (from navigator
 // interviews to be done this week — placeholders until then).
-const MANUAL_MINUTES = { extract: 8, people: 5, conflicts: 10, match: 25, gaps: 10, plan: 15, graph: 5 };
+const MANUAL_MINUTES = { extract: 8, occupancy: 5, people: 5, conflicts: 10, match: 25, gaps: 10, plan: 15, graph: 5 };
 
 export async function runCase(input: {
   caseId: string; householdName: string; address: string; disaster: string; today: string;
   documents: CaseDocument[]; extractor?: Extractor; limits?: Partial<RunLimits>;
+  /** Extractions from an earlier run to reuse by document id (incremental re-run when a new document arrives). */
+  reuse?: ExtractionResult[];
 }): Promise<CaseState> {
   const events: ActivityEvent[] = [];
   const log = (agent: AgentName, action: string, detail: string, refs?: string[], minutesSaved?: number) =>
@@ -50,6 +52,7 @@ export async function runCase(input: {
     extraction: { claude: 0, rules: 0, fellBack: 0, mode: "rules" },
   };
   let aliasNotes: string[] = [];
+  const bills = input.documents.filter((d) => d.kind === "utility_bill");
 
   // ── Claude extraction with time limits, fallback and a circuit breaker ──
   // Every document always ends up with an extraction: if Claude is slow,
@@ -59,6 +62,8 @@ export async function runCase(input: {
   const breaker = new AbortController(); // aborts in-flight Claude calls once tripped
   let failures = 0;
   let settled = 0;
+  const reused = new Map((input.reuse ?? []).map((e) => [e.docId, e]));
+  const toRead = input.documents.filter((d) => !reused.has(d.id)).length;
 
   async function extract(d: CaseDocument): Promise<ExtractionResult> {
     const claude = input.extractor;
@@ -80,7 +85,7 @@ export async function runCase(input: {
         if (breaker.signal.aborted) return extractWithRules(d); // cut short by the breaker
         failures++;
         log("Evidence Agent", "Fell back to rules", `${d.filename}: ${fallbackReason(err)} (${(err as Error).message}). The rules engine read it instead.`, [d.id]);
-        const remaining = input.documents.length - settled - 1;
+        const remaining = toRead - settled - 1;
         if (failures >= limits.breakerAfter && remaining > 0) {
           log("Evidence Agent", "Claude skipped", `Switching to rules for remaining documents (${remaining} left) after ${failures} Claude failures in this run.`);
           breaker.abort();
@@ -98,12 +103,36 @@ export async function runCase(input: {
     ...input.documents.map<Task>((d) => ({
       id: `extract:${d.id}`, agent: "Evidence Agent", deps: [],
       run: async () => {
+        const prev = reused.get(d.id);
+        if (prev) {
+          state.extractions.push(prev);
+          log("Evidence Agent", `Reused ${d.filename}`, `Already read in the previous run: ${prev.facts.length} facts (${prev.method}).`, [d.id]);
+          return;
+        }
         const ex = await extract(d);
         state.extractions.push(ex);
-        const types = ex.evidenceTypes.length ? ex.evidenceTypes.join(", ").replaceAll("_", " ") : "context only";
+        const types = ex.evidenceTypes.length ? ex.evidenceTypes.join(", ").replaceAll("_", " ")
+          : d.kind === "utility_bill" ? "utility bill (occupancy check next)" : "context only";
         log("Evidence Agent", `Read ${d.filename}`, `${ex.facts.length} facts extracted (${ex.method}${summarizeIssues(ex.issues)}). Classified as: ${types}.`, [d.id], MANUAL_MINUTES.extract);
       },
     })),
+    // Utility bills only count as proof of occupancy once every document is read:
+    // the bill must pre-date the earliest date of loss any document states.
+    ...(bills.length ? [{
+      id: "occupancy", agent: "Evidence Agent" as const, deps: input.documents.map((d) => `extract:${d.id}`),
+      run: () => {
+        const losses = state.extractions.flatMap((e) => e.facts).filter((f) => f.type === "date_of_loss" && f.normalized).map((f) => f.normalized!).sort();
+        const ctx = { address: input.address, dateOfLoss: losses[0] };
+        for (const d of bills) {
+          const i = state.extractions.findIndex((e) => e.docId === d.id);
+          if (i < 0) continue;
+          const ex = state.extractions[i];
+          const check = occupancyCheck(ex.facts, ctx);
+          state.extractions[i] = { ...ex, evidenceTypes: classify(d, ex.facts, ctx) }; // copy: reused extractions stay untouched
+          log("Evidence Agent", check.ok ? "Verified proof of occupancy" : "Occupancy not verified", `${d.filename}: ${check.reason}.`, [d.id], check.ok ? MANUAL_MINUTES.occupancy : undefined);
+        }
+      },
+    }] : []),
     {
       id: "people", agent: "Evidence Agent", deps: input.documents.map((d) => `extract:${d.id}`),
       run: () => {
@@ -128,7 +157,7 @@ export async function runCase(input: {
       },
     },
     {
-      id: "match", agent: "Recovery-Match Agent", deps: ["needs"],
+      id: "match", agent: "Recovery-Match Agent", deps: ["needs", ...(bills.length ? ["occupancy"] : [])],
       run: () => {
         state.matches = matchPrograms(state.documents, state.extractions, state.needs, state.today);
         log("Recovery-Match Agent", "Matched recovery pathways", `${state.matches.length} possible matches from the verified source list: ${state.matches.map((m) => m.name).join(", ")}.`, undefined, MANUAL_MINUTES.match);

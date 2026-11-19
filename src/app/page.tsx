@@ -1,6 +1,6 @@
 import Dashboard from "@/components/Dashboard";
-import { DEMO_TODAY, documents, household } from "@/data/household";
+import { DEMO_TODAY, documents, followUpDocuments, household } from "@/data/household";
 
 export default function Home() {
-  return <Dashboard household={household} documents={documents} today={DEMO_TODAY} />;
+  return <Dashboard household={household} documents={documents} followUps={followUpDocuments} today={DEMO_TODAY} />;
 }

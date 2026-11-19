@@ -66,6 +66,10 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   find(new RegExp(`by ${DATE_RE}`, "i"), (m, q) =>
     add("deadline", "Documents due to insurer", m[1], q, `insurance_due:${parseDate(m[1])}`, 0.9));
 
+  // Billing period (utility bills): the end date shows whether the bill pre-dates the storm
+  find(new RegExp(`Billing period:\\s*${DATE_RE}\\s*(?:–|—|-|to|through)\\s*${DATE_RE}`, "i"), (m, q) =>
+    add("billing_period", "Billing period", `${m[1]} – ${m[2]}`, q, `billing_end:${parseDate(m[2])}`, 0.95));
+
   // Appointments
   find(new RegExp(`inspection is scheduled for ${DATE_RE}(?: at ([0-9:]+ ?[AP]M))?`, "i"), (m, q) =>
     add("appointment", "Adjuster inspection", `${m[1]}${m[2] ? " at " + m[2] : ""}`, q, parseDate(m[1]), 0.92));
@@ -112,14 +116,48 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   return { docId: doc.id, evidenceTypes: classify(doc, facts), facts, method: "rules" };
 }
 
-/** Which evidence categories a document can satisfy. */
-export function classify(doc: CaseDocument, facts: Fact[]): EvidenceType[] {
+/** Household context that some evidence needs before it counts (see occupancyCheck). */
+export interface ClassifyContext {
+  /** The damaged home's address. */
+  address: string;
+  /** Earliest date of loss across all documents (ISO), if any document states one. */
+  dateOfLoss?: string;
+}
+
+const SUFFIX: Record<string, string> = { lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd", boulevard: "blvd" };
+/** "1847 Cypress Bayou Lane, Houston" → "1847cypressbayouln": street line only, suffixes abbreviated. */
+export function streetKey(address: string): string {
+  return address.split(",")[0].toLowerCase().split(/\s+/).map((w) => SUFFIX[w.replace(/\./g, "")] ?? w).join("").replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * A utility bill is proof of occupancy only if its service address is the
+ * damaged home and its billing period ends before the date of loss (FEMA asks
+ * for proof dated before the disaster).
+ */
+export function occupancyCheck(facts: Fact[], ctx: ClassifyContext): { ok: boolean; reason: string } {
+  const home = streetKey(ctx.address);
+  const addressOk = facts.some((f) => f.type === "address" && streetKey(f.value) === home);
+  const end = facts.find((f) => f.type === "billing_period" && f.normalized?.startsWith("billing_end:"))?.normalized?.slice(12);
+  if (!addressOk) return { ok: false, reason: `the service address does not match ${ctx.address.split(",")[0]}` };
+  if (!end) return { ok: false, reason: "no billing period found on the bill" };
+  if (!ctx.dateOfLoss) return { ok: false, reason: "no date of loss on file to compare the billing period with" };
+  if (end >= ctx.dateOfLoss) return { ok: false, reason: `the billing period ends ${end}, not before the date of loss (${ctx.dateOfLoss})` };
+  return { ok: true, reason: `service address matches ${ctx.address.split(",")[0]} and the billing period ends ${end}, before the earliest date of loss (${ctx.dateOfLoss})` };
+}
+
+/**
+ * Which evidence categories a document can satisfy. A utility bill needs the
+ * household context (address and date of loss), so without `ctx` it is left
+ * unclassified until the coordinator's occupancy check runs.
+ */
+export function classify(doc: CaseDocument, facts: Fact[], ctx?: ClassifyContext): EvidenceType[] {
   const out = new Set<EvidenceType>();
   if (doc.kind === "photo") out.add("damage_photo");
   if (doc.kind === "estimate") out.add("repair_estimate");
   if (doc.kind === "fema_letter") out.add("fema_determination");
   if (doc.kind === "insurance_email") out.add("insurance_correspondence");
-  if (doc.kind === "utility_bill") out.add("proof_of_occupancy");
+  if (doc.kind === "utility_bill" && ctx && occupancyCheck(facts, ctx).ok) out.add("proof_of_occupancy");
   if (doc.kind === "voice_note" && facts.some((f) => f.type === "need")) out.add("loss_statement");
   return [...out];
 }

@@ -210,10 +210,15 @@ const QUESTIONS: Partial<Record<EvidenceType, { en: string; es: string }>> = {
   },
 };
 
+/** Pathways that serve a critical (safety) need, e.g. power for an oxygen concentrator. */
+const servesCriticalNeed = (programId: string) =>
+  (PROGRAM_NEEDS[programId] ?? []).some((k) => NEED_META[k].urgency === "critical");
+
 /**
  * Pick the single most valuable thing to ask the household for:
  * the missing item that unblocks the most programs, weighted by how close the
- * deadline is, with a bonus when the household already said they have it.
+ * deadline is, with a bonus when the household already said they have it and
+ * a smaller one when it unblocks a pathway for a critical (safety) need.
  */
 export function pickFollowUp(matches: ProgramMatch[], today: string): FollowUpQuestion | undefined {
   const score = new Map<EvidenceType, { s: number; unblocks: string[]; hint?: string }>();
@@ -221,7 +226,8 @@ export function pickFollowUp(matches: ProgramMatch[], today: string): FollowUpQu
     const urgency = m.deadline ? Math.max(1, 60 - daysBetween(today, m.deadline.date)) / 10 : 1;
     for (const e of m.evidence.filter((x) => !x.satisfiedBy.length)) {
       const cur = score.get(e.type) ?? { s: 0, unblocks: [] };
-      cur.s += 1 + urgency + (e.hint ? 5 : 0); // the household already has it: easiest win
+      cur.s += 1 + urgency + (e.hint ? 5 : 0) // the household already has it: easiest win
+        + (servesCriticalNeed(m.programId) ? 2 : 0); // safety before paperwork when nothing else separates them
       cur.unblocks.push(m.programId);
       cur.hint ??= e.hint;
       score.set(e.type, cur);

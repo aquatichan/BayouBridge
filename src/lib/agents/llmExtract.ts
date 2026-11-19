@@ -13,7 +13,7 @@ import { fillFromRules, validateFacts } from "./validate";
 const FACT_TYPES = [
   "person", "address", "date_of_loss", "money", "claim_number", "policy_number",
   "fema_registration", "deadline", "appointment", "damage", "need", "determination",
-  "exclusion", "mentions_evidence",
+  "exclusion", "mentions_evidence", "billing_period",
 ] as const;
 
 const Extraction = z.object({
@@ -41,6 +41,7 @@ Normalization rules for "normalized":
 - exclusion: "flood_excluded" if flood damage is excluded
 - mentions_evidence: "has:<evidence_type>" if the person says they have a document they did not upload, "absent:<evidence_type>" if they say they do not have it. Evidence types: proof_of_occupancy, loss_receipts, proof_of_identity, medical_need_documentation
 - person: "role:mother", "role:son", or "" for the main applicant
+- billing_period: "billing_end:YYYY-MM-DD", the last day of a bill's service period
 - otherwise an empty string.
 For money facts use labels: "Repair estimate total", "Hurricane deductible", "Food lost in outage (estimated)", "Interior repair line items".`;
 
