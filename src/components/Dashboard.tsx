@@ -258,6 +258,12 @@ export default function Dashboard({ household, documents, followUps, today }: {
 
       <main className="mx-auto max-w-7xl space-y-4 px-4 py-5">
         {error && <p className="rounded-xl bg-clay-soft p-3 text-sm text-clay">Run failed: {error}</p>}
+        {s && s.warnings?.length > 0 && (
+          <div role="status" className="rounded-xl border border-amber/40 bg-amber-soft p-3 text-sm text-ink">
+            <b className="text-amber">Some steps didn&apos;t finish.</b> The rest of the case is still usable. Check these before acting:
+            <ul className="mt-1 list-disc pl-5 text-xs text-muted">{s.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          </div>
+        )}
 
         {/* Case header */}
         <div className="flex flex-wrap items-end justify-between gap-2">

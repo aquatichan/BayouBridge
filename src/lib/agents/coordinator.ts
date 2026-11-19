@@ -67,6 +67,8 @@ export async function runCase(input: {
   documents: CaseDocument[]; extractor?: Extractor; limits?: Partial<RunLimits>;
   /** Extractions from an earlier run to reuse by document id (incremental re-run when a new document arrives). */
   reuse?: ExtractionResult[];
+  /** Test hook: called before each task runs; throw to simulate that step failing. */
+  beforeTask?: (taskId: string) => void;
 } & RunHooks): Promise<CaseState> {
   const events: ActivityEvent[] = [];
   const log = (agent: AgentName, action: string, detail: string, refs?: string[], minutesSaved?: number) => {
@@ -83,7 +85,7 @@ export async function runCase(input: {
     caseId: input.caseId, householdName: input.householdName, address: input.address, disaster: input.disaster,
     today: input.today, documents: input.documents, extractions: [], people: [], needs: [], conflicts: [],
     matches: [], plan: [], packets: [], graph: { nodes: [], edges: [] }, evidenceScore: 0, events, minutesSaved: 0,
-    extraction: { claude: 0, rules: 0, fellBack: 0, mode: "rules" },
+    extraction: { claude: 0, rules: 0, fellBack: 0, mode: "rules" }, warnings: [],
   };
   let aliasNotes: string[] = [];
   const bills = input.documents.filter((d) => d.kind === "utility_bill");
@@ -247,10 +249,32 @@ export async function runCase(input: {
 
   // Run ready tasks in waves; independent tasks in a wave run in parallel.
   const done = new Set<string>();
-  const update = (t: Task, status: TaskUpdate["status"]) => input.onTask?.({
-    id: t.id, agent: t.agent, status,
-    label: LABELS[t.id] ?? `Reading ${input.documents.find((d) => `extract:${d.id}` === t.id)?.filename ?? t.id}`,
-  });
+  const labelOf = (t: Task) => LABELS[t.id] ?? `Reading ${input.documents.find((d) => `extract:${d.id}` === t.id)?.filename ?? t.id}`;
+  const update = (t: Task, status: TaskUpdate["status"]) => input.onTask?.({ id: t.id, agent: t.agent, status, label: labelOf(t) });
+  const warn = (w: string) => { state.warnings.push(w); input.onState?.({ warnings: [...state.warnings] }); };
+
+  // If one of these steps fails, the run carries on with a conservative default.
+  // Steps without one (needs, match, plan) can't be guessed safely: their
+  // dependents are skipped instead, and the run still finishes.
+  const safeDefault = (id: string): { note: string; apply: () => void } | undefined => {
+    if (id.startsWith("extract:")) {
+      const docId = id.slice("extract:".length);
+      return {
+        note: "this document's facts are missing from the case",
+        apply: () => { if (!state.extractions.some((e) => e.docId === docId)) state.extractions.push({ docId, evidenceTypes: [], facts: [], method: "rules", issues: ["dropped: extraction failed"] }); },
+      };
+    }
+    const defaults: Record<string, { note: string; apply: () => void }> = {
+      occupancy: { note: "utility bills were not counted as proof of occupancy", apply: () => {} },
+      people: { note: "household members were not resolved", apply: () => { state.people = []; aliasNotes = []; } },
+      conflicts: { note: "documents were not checked for conflicts", apply: () => { state.conflicts = []; } },
+      gaps: { note: "no follow-up question was picked", apply: () => { state.followUp = undefined; } },
+      packet: { note: "no packets were drafted, so nothing can be approved", apply: () => { state.packets = []; } },
+      safety: { note: "approval gates were not applied, so nothing can be approved in this run", apply: () => {} },
+      graph: { note: "the recovery graph is empty", apply: () => { state.graph = { nodes: [], edges: [] }; } },
+    };
+    return defaults[id];
+  };
   const publish = (t: Task) => {
     const keys = SLICES[t.id]; // extraction tasks publish their own slice (publishExtractions)
     if (!input.onState || !keys) return;
@@ -260,16 +284,51 @@ export async function runCase(input: {
   };
   input.onState?.({ ...state, events: [] });
   log("Coordinator", "Started case run", `${input.documents.length} documents queued. ${tasks.length} tasks in the graph.`);
-  while (done.size < tasks.length) {
-    const ready = tasks.filter((t) => !done.has(t.id) && t.deps.every((d) => done.has(d)));
-    if (!ready.length) throw new Error("Task graph has a cycle or a missing dependency");
+  const failed = new Set<string>(); // failed with no safe default, or skipped
+  while (done.size + failed.size < tasks.length) {
+    const open = tasks.filter((t) => !done.has(t.id) && !failed.has(t.id));
+    const blocked = open.filter((t) => t.deps.some((d) => failed.has(d)));
+    if (blocked.length) {
+      for (const t of blocked) {
+        failed.add(t.id);
+        const dep = t.deps.find((d) => failed.has(d))!;
+        log(t.agent, "Step skipped", `${labelOf(t)}: skipped because "${labelOf(tasks.find((x) => x.id === dep) ?? t)}" did not finish.`);
+        warn(`${labelOf(t)} was skipped.`);
+      }
+      continue;
+    }
+    const ready = open.filter((t) => t.deps.every((d) => done.has(d)));
+    if (!ready.length) {
+      // A cycle or a missing dependency is a programming error. Never loop forever on it.
+      for (const t of open) failed.add(t.id);
+      log("Coordinator", "Step skipped", `${open.length} steps could not start (missing dependency).`);
+      warn(`${open.length} steps could not start.`);
+      break;
+    }
     await Promise.all(ready.map(async (t) => {
       update(t, "started");
-      const pending = t.run();
-      if (pending) await pending; // sync tasks publish right after their event, with no gap
-      done.add(t.id);
-      update(t, "done");
-      publish(t);
+      try {
+        input.beforeTask?.(t.id);
+        const pending = t.run();
+        if (pending) await pending; // sync tasks publish right after their event, with no gap
+        done.add(t.id);
+        update(t, "done");
+        publish(t);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const fallback = safeDefault(t.id);
+        log(t.agent, "Step failed", `${labelOf(t)}: ${msg}.${fallback ? ` Continuing: ${fallback.note}.` : " Steps that depend on it will be skipped."}`);
+        update(t, "failed");
+        if (fallback) {
+          fallback.apply();
+          done.add(t.id);
+          warn(`${labelOf(t)} failed, so ${fallback.note}.`);
+          if (t.id.startsWith("extract:")) publishExtractions(); else publish(t);
+        } else {
+          failed.add(t.id);
+          warn(`${labelOf(t)} failed (${msg}).`);
+        }
+      }
     }));
   }
   // Keep document order stable regardless of which extraction finished first.

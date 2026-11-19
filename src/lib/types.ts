@@ -218,7 +218,7 @@ export interface TaskUpdate {
   id: string; // "extract:<docId>", "people", "match", ...
   agent: AgentName;
   label: string;
-  status: "started" | "done";
+  status: "started" | "done" | "failed";
 }
 
 export interface CaseState {
@@ -241,4 +241,6 @@ export interface CaseState {
   events: ActivityEvent[];
   minutesSaved: number;
   extraction: ExtractionSummary;
+  /** Steps that failed or were skipped. The run still completes; the dashboard shows these. */
+  warnings: string[];
 }
