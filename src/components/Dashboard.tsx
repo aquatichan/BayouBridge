@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import RecoveryGraph from "./RecoveryGraph";
 import Capybara from "./Capybara";
+import Office from "./office/Office";
+import { OfficeDirector } from "@/lib/office/director";
 
 type Household = { caseId: string; name: string; address: string; disaster: string };
 
@@ -86,6 +88,8 @@ export default function Dashboard({ household, documents, followUps, today }: {
   const [approving, setApproving] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
   const feedRef = useRef<HTMLOListElement>(null);
+  // Drives the 3D office: every task and event becomes a mascot walking somewhere to work.
+  const director = useMemo(() => new OfficeDirector(), []);
 
   /**
    * Run the agents. With `addDocumentIds` (a follow-up document arriving) the
@@ -97,6 +101,7 @@ export default function Dashboard({ household, documents, followUps, today }: {
     const before = followUp ? events : []; // a follow-up run's events are appended to these
     setFetching(true); setError(null); setQueue([]); setTasks({});
     setApproveError(null);
+    director.newRun(followUp ? addDocumentIds!.length : documents.length);
     if (!followUp) { setState(null); setEvents([]); setMode(null); }
     const init: RequestInit = {
       method: "POST",
@@ -128,8 +133,8 @@ export default function Dashboard({ household, documents, followUps, today }: {
         buf = parsed.rest;
         for (const f of parsed.frames) {
           const data = JSON.parse(f.data);
-          if (f.event === "task") setTasks((t) => ({ ...t, [data.id]: data as TaskUpdate }));
-          else if (f.event === "agent") setEvents((ev) => [...ev, data as ActivityEvent]);
+          if (f.event === "task") { director.onTask(data as TaskUpdate); setTasks((t) => ({ ...t, [data.id]: data as TaskUpdate })); }
+          else if (f.event === "agent") { director.onEvent(data as ActivityEvent); setEvents((ev) => [...ev, data as ActivityEvent]); }
           else if (f.event === "state") {
             const part = data as Partial<CaseState>;
             setState((prev) => {
@@ -164,11 +169,12 @@ export default function Dashboard({ household, documents, followUps, today }: {
   useEffect(() => {
     if (!queue.length) return;
     const t = setTimeout(() => {
+      director.onEvent(queue[0]);
       setEvents((ev) => [...ev, queue[0]]);
       setQueue((q) => q.slice(1));
     }, events.length === 0 ? 150 : 420);
     return () => clearTimeout(t);
-  }, [queue, events.length]);
+  }, [queue, events.length, director]);
 
   useEffect(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" }); }, [events]);
 
@@ -215,6 +221,7 @@ export default function Dashboard({ household, documents, followUps, today }: {
         plan: prev.plan.map((x) => (x.id === task.id ? task : x)),
         packets: prev.packets.map((p) => (p.id === item.packet.id ? item.packet : p)),
       });
+      approvalEvents.forEach((e) => director.onEvent(e));
       setEvents((ev) => [...ev, ...approvalEvents]);
       setOutbox((o) => (o.some((x) => x.id === item.id) ? o : [...o, item]));
     } catch (e) {
@@ -264,6 +271,11 @@ export default function Dashboard({ household, documents, followUps, today }: {
             <ul className="mt-1 list-disc pl-5 text-xs text-muted">{s.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
           </div>
         )}
+
+        {/* The office: the agents at work, in 3D */}
+        <section className="overflow-hidden rounded-2xl border border-line bg-panel shadow-[0_1px_0_rgba(0,0,0,0.03)]">
+          <Office director={director} className="h-[340px] md:h-[480px]" />
+        </section>
 
         {/* Case header */}
         <div className="flex flex-wrap items-end justify-between gap-2">

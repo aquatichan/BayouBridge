@@ -108,12 +108,17 @@ export async function runCase(input: {
   async function extract(d: CaseDocument): Promise<ExtractionResult> {
     const claude = input.extractor;
     if (!claude) return extractWithRules(d);
+    // Tell live viewers the rules engine has taken over this document.
+    const viaRules = () => {
+      input.onTask?.({ id: `extract:${d.id}`, agent: "Evidence Agent", label: `Reading ${d.filename}`, status: "started", via: "rules" });
+      return extractWithRules(d);
+    };
     try {
       const budget = Math.min(limits.docMs, runDeadline - Date.now());
-      if (breaker.signal.aborted) return extractWithRules(d); // covered by the "Claude skipped" event
+      if (breaker.signal.aborted) return viaRules(); // covered by the "Claude skipped" event
       if (budget <= 0) {
         log("Evidence Agent", "Fell back to rules", `${d.filename}: timeout (the run's ${limits.runMs}ms Claude budget is used up). The rules engine read it instead.`, [d.id]);
-        return extractWithRules(d);
+        return viaRules();
       }
       const call = new AbortController();
       const cancel = () => call.abort();
@@ -122,7 +127,7 @@ export async function runCase(input: {
         return await withTimeout(claude(d, { signal: call.signal }), budget, "Claude call", call.signal);
       } catch (err) {
         call.abort(); // stop the HTTP request too, so no socket or timer is left behind
-        if (breaker.signal.aborted) return extractWithRules(d); // cut short by the breaker
+        if (breaker.signal.aborted) return viaRules(); // cut short by the breaker
         failures++;
         log("Evidence Agent", "Fell back to rules", `${d.filename}: ${fallbackReason(err)} (${(err as Error).message}). The rules engine read it instead.`, [d.id]);
         const remaining = toRead - settled - 1;
@@ -130,7 +135,7 @@ export async function runCase(input: {
           log("Evidence Agent", "Claude skipped", `Switching to rules for remaining documents (${remaining} left) after ${failures} Claude failures in this run.`);
           breaker.abort();
         }
-        return extractWithRules(d);
+        return viaRules();
       } finally {
         breaker.signal.removeEventListener("abort", cancel);
       }
@@ -252,7 +257,9 @@ export async function runCase(input: {
   // Run ready tasks in waves; independent tasks in a wave run in parallel.
   const done = new Set<string>();
   const labelOf = (t: Task) => LABELS[t.id] ?? `Reading ${input.documents.find((d) => `extract:${d.id}` === t.id)?.filename ?? t.id}`;
-  const update = (t: Task, status: TaskUpdate["status"]) => input.onTask?.({ id: t.id, agent: t.agent, status, label: labelOf(t) });
+  const viaOf = (t: Task): TaskUpdate["via"] => !t.id.startsWith("extract:") ? undefined
+    : reused.has(t.id.slice("extract:".length)) ? "reused" : input.extractor ? "claude" : "rules";
+  const update = (t: Task, status: TaskUpdate["status"]) => input.onTask?.({ id: t.id, agent: t.agent, status, label: labelOf(t), via: viaOf(t) });
   const warn = (w: string) => { state.warnings.push(w); input.onState?.({ warnings: [...state.warnings] }); };
 
   // If one of these steps fails, the run carries on with a conservative default.

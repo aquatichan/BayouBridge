@@ -219,6 +219,8 @@ export interface TaskUpdate {
   agent: AgentName;
   label: string;
   status: "started" | "done" | "failed";
+  /** Extraction tasks only: who is reading the document. A Claude read that falls back is re-announced as "rules". */
+  via?: "claude" | "rules" | "reused";
 }
 
 export interface CaseState {
