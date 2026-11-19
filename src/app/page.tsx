@@ -1,6 +1,6 @@
-import Dashboard from "@/components/Dashboard";
-import { DEMO_TODAY, documents, household } from "@/data/household";
+import Landing from "@/components/landing/Landing";
 
+// The landing page. The household app is at /case; the full technical write-up at /details.
 export default function Home() {
-  return <Dashboard household={household} documents={documents} today={DEMO_TODAY} />;
+  return <Landing />;
 }

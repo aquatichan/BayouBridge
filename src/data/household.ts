@@ -134,3 +134,29 @@ Mi hijo Luis tiene 16 años y vive con nosotras.
 La factura de la luz de septiembre la tengo en mi correo electrónico, pero no la he imprimido.`,
   },
 ];
+
+/**
+ * Documents that arrive after the first run. The server appends these only by
+ * id (POST /api/run { addDocumentIds }); it never accepts document text from
+ * the browser. The bill pre-dates the storm, which is what FEMA needs to see.
+ */
+export const followUpDocuments: CaseDocument[] = [
+  {
+    id: "doc-electric-bill",
+    kind: "utility_bill",
+    title: "September electric bill",
+    filename: "BayouStatePower_Bill_Sep2026.pdf",
+    mime: "application/pdf",
+    receivedAt: "2026-11-18",
+    language: "en",
+    text: `BAYOU STATE POWER (fictional) — Residential electric statement (synthetic sample)
+Statement date: October 3, 2026
+Account number: 5520-7731-0948
+Customer: Ana Reyes
+Service address: 1847 Cypress Bayou Ln, Houston, TX 77093
+Billing period: September 1, 2026 – September 30, 2026
+Electricity used: 1,186 kWh
+Amount due: $162.40
+Payment due: October 24, 2026`,
+  },
+];

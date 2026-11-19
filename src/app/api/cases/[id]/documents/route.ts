@@ -1,0 +1,27 @@
+import { addUploads, CaseError } from "@/lib/cases";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+// POST /api/cases/:id/documents (multipart/form-data)
+//   files:     photos (JPEG, PNG, WebP, GIF), PDFs or text files, up to 10 per case, 8 MB each
+//   statement: what happened, in the household's own words (typed or dictated)
+// Files are kept in server memory with the case; nothing is written to disk.
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const id = (await params).id;
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return Response.json({ error: "Send the files as multipart/form-data." }, { status: 400 });
+  }
+  const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  const statement = form.get("statement");
+  try {
+    const docs = await addUploads(id, files, typeof statement === "string" ? statement : undefined);
+    return Response.json({ documents: docs.map(({ id, title, filename, kind, source, mime }) => ({ id, title, filename, kind, source, mime })) });
+  } catch (err) {
+    if (err instanceof CaseError) return Response.json({ error: err.message }, { status: err.status });
+    throw err;
+  }
+}

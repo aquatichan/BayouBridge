@@ -7,7 +7,18 @@ export type DocKind =
   | "fema_letter"
   | "insurance_email"
   | "voice_note"
-  | "utility_bill";
+  | "utility_bill"
+  // Kinds that real uploads can be (Claude decides when it reads the file)
+  | "bank_statement"
+  | "lease"
+  | "id_card"
+  | "insurance_policy"
+  | "medical_letter"
+  | "receipt"
+  | "other";
+
+/** Kinds that can prove someone lived at the address before the storm (with a period that ends before the date of loss). */
+export const OCCUPANCY_KINDS: DocKind[] = ["utility_bill", "bank_statement"];
 
 /** Evidence categories that recovery programs ask for. */
 export type EvidenceType =
@@ -34,6 +45,8 @@ export interface CaseDocument {
   language: "en" | "es";
   /** Optional illustration shown in the UI (photos). */
   preview?: string;
+  /** Where it came from. Uploaded files are read by Claude, which fills in kind, title and text. */
+  source?: "sample" | "upload" | "statement";
 }
 
 export type FactType =
@@ -50,7 +63,8 @@ export type FactType =
   | "need"
   | "determination"
   | "exclusion"
-  | "mentions_evidence";
+  | "mentions_evidence"
+  | "billing_period";
 
 export interface Fact {
   id: string;
@@ -70,6 +84,10 @@ export interface ExtractionResult {
   evidenceTypes: EvidenceType[];
   facts: Fact[];
   method: "rules" | "claude";
+  /** What validation changed in Claude's output: "repaired: ...", "dropped: ...", "filled from rules: ...". */
+  issues?: string[];
+  /** For uploaded files: what reading the file found out about the document itself. */
+  document?: Pick<CaseDocument, "kind" | "title" | "language" | "text">;
 }
 
 export type NeedKey =
@@ -138,6 +156,35 @@ export interface PlanTask {
   programId?: string;
   status: "ready" | "blocked" | "needs_approval";
   detail: string;
+  /** Stamped by the Safety Agent on every outbound (BayouBridge-owned) task. */
+  requiresApproval?: boolean;
+  /** Set only by the server's approve route (POST /api/approve). */
+  approved?: boolean;
+}
+
+/** What the Packet Agent would send for one pathway. Never leaves the sandbox outbox. */
+export interface Packet {
+  id: string; // "packet:<programId>"
+  programId: string;
+  title: string;
+  /** Who it would go to (the program's agency). */
+  to: string;
+  summary: string;
+  attachments: { docId: string; title: string }[];
+  citations: { factId: string; quote: string; docId: string }[];
+  /** Cover note in English, plus Spanish so the household can read what is sent for them. */
+  bilingualCover: { en: string; es: string };
+  status: "draft" | "approved" | "queued";
+}
+
+/** A packet a navigator approved, held in the in-memory sandbox outbox. */
+export interface OutboxItem {
+  id: string;
+  caseId: string;
+  taskId: string;
+  packet: Packet;
+  approvedBy: string;
+  queuedAt: string; // ISO timestamp
 }
 
 export type GraphNodeKind = "document" | "need" | "program" | "missing" | "deadline";
@@ -172,6 +219,25 @@ export interface ActivityEvent {
   minutesSaved?: number;
 }
 
+/** Which extractor actually read the documents in a run (not just whether a key is set). */
+export interface ExtractionSummary {
+  claude: number;
+  rules: number;
+  /** Documents meant for Claude that the rules engine read instead (timeout, refusal, validation, error, breaker). */
+  fellBack: number;
+  mode: "claude" | "rules" | "mixed";
+}
+
+/** Live status of one coordinator task, for showing agents "working" while they run. */
+export interface TaskUpdate {
+  id: string; // "extract:<docId>", "people", "match", ...
+  agent: AgentName;
+  label: string;
+  status: "started" | "done" | "failed";
+  /** Extraction tasks only: who is reading the document. A Claude read that falls back is re-announced as "rules". */
+  via?: "claude" | "rules" | "reused";
+}
+
 export interface CaseState {
   caseId: string;
   householdName: string;
@@ -186,8 +252,12 @@ export interface CaseState {
   matches: ProgramMatch[];
   followUp?: FollowUpQuestion;
   plan: PlanTask[];
+  packets: Packet[];
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   evidenceScore: number; // 0..100
   events: ActivityEvent[];
   minutesSaved: number;
+  extraction: ExtractionSummary;
+  /** Steps that failed or were skipped. The run still completes; the dashboard shows these. */
+  warnings: string[];
 }

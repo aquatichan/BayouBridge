@@ -1,4 +1,4 @@
-import type { CaseDocument, EvidenceType, ExtractionResult, Fact, FactType } from "@/lib/types";
+import { OCCUPANCY_KINDS, type CaseDocument, type EvidenceType, type ExtractionResult, type Fact, type FactType } from "@/lib/types";
 
 // Evidence Agent — rules-based extractor.
 // Works offline with no API key. When ANTHROPIC_API_KEY is set, the /api/run
@@ -20,6 +20,20 @@ export function parseDate(s: string): string | undefined {
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   return undefined;
 }
+
+/** Powered medical equipment, in either language → its English name. */
+const EQUIPMENT: Record<string, string> = {
+  "concentrador de oxígeno": "Oxygen concentrator", "oxygen concentrator": "Oxygen concentrator",
+  cpap: "CPAP machine", nebulizador: "Nebulizer", nebulizer: "Nebulizer",
+};
+const MONTHS_ES_EN: Record<string, string> = {
+  enero: "January", febrero: "February", marzo: "March", abril: "April", mayo: "May", junio: "June", julio: "July",
+  agosto: "August", septiembre: "September", setiembre: "September", octubre: "October", noviembre: "November", diciembre: "December",
+};
+const NUMBER_WORDS: Record<string, number> = {
+  un: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
 
 const DATE_RE = "((?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},\\s*\\d{4})";
 
@@ -66,6 +80,10 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   find(new RegExp(`by ${DATE_RE}`, "i"), (m, q) =>
     add("deadline", "Documents due to insurer", m[1], q, `insurance_due:${parseDate(m[1])}`, 0.9));
 
+  // Billing period (utility bills): the end date shows whether the bill pre-dates the storm
+  find(new RegExp(`(?:Billing|Statement) period:\\s*${DATE_RE}\\s*(?:–|—|-|to|through)\\s*${DATE_RE}`, "i"), (m, q) =>
+    add("billing_period", "Billing period", `${m[1]} – ${m[2]}`, q, `billing_end:${parseDate(m[2])}`, 0.95));
+
   // Appointments
   find(new RegExp(`inspection is scheduled for ${DATE_RE}(?: at ([0-9:]+ ?[AP]M))?`, "i"), (m, q) =>
     add("appointment", "Adjuster inspection", `${m[1]}${m[2] ? " at " + m[2] : ""}`, q, parseDate(m[1]), 0.92));
@@ -96,30 +114,78 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   // Damage (vision captions + estimate)
   find(/(missing shingles|exposed (?:wood )?decking|wind damage to roof)/i, (m, q) =>
     add("damage", "Roof damage", m[1], q, "roof_damage", 0.9));
-  find(/(water line[^.]*|rain intrusion to living room|soaked)/i, (m, q) =>
+  find(/(water line[^.]*|rain intrusion(?: to [a-z ]+)?|soaked)/i, (m, q) =>
     add("damage", "Interior water damage", m[1], q, "interior_water_damage", 0.85));
 
   // Needs (voice note, either language)
-  find(/(concentrador de oxígeno|oxygen concentrator)/i, (m, q) =>
-    add("need", "Power-dependent medical equipment", "Oxygen concentrator (Carmen, 71)", q, "medical_power", 0.9));
-  find(/(perdimos toda la comida|lost (?:all )?(?:our )?food)/i, (m, q) =>
-    add("need", "Food loss from outage", "Refrigerated food lost (4-day outage)", q, "food_loss", 0.88));
+  // Powered medical equipment, and who uses it: the person named with an age in the same sentence.
+  find(/(concentrador de oxígeno|oxygen concentrator|cpap|nebulizador|nebulizer)/i, (m, q) => {
+    const who = q.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]+)(?: [A-ZÁÉÍÓÚ][a-záéíóúñ]+)?,? (?:tiene|is) (\d{1,3})\b/);
+    const equipment = EQUIPMENT[m[1].toLowerCase()] ?? m[1];
+    add("need", "Power-dependent medical equipment", `${equipment} (${who ? `${who[1]}, ${who[2]}` : "household member"})`, q, "medical_power", 0.9);
+  });
+  find(/(perdimos toda la comida|lost (?:all )?(?:our )?food)/i, (m, q) => {
+    const days = q.match(/\b(\d+|[a-z]+) (?:días|days)\b/i)?.[1]?.toLowerCase();
+    const n = days ? Number(days) || NUMBER_WORDS[days] : undefined;
+    add("need", "Food loss from outage", `Refrigerated food lost (${n ? `${n}-day outage` : "power outage"})`, q, "food_loss", 0.88);
+  });
   find(/(No guardé los recibos)/i, (m, q) =>
     add("mentions_evidence", "No receipts kept", "Food receipts not available", q, "absent:loss_receipts", 0.8));
-  find(/(factura de la luz[^.]*correo electrónico)/i, (m, q) =>
-    add("mentions_evidence", "Has a utility bill (not uploaded)", "September electric bill in email", q, "has:proof_of_occupancy", 0.82));
+  find(/(factura de la luz[^.]*correo electrónico|electric bill[^.]*email)/i, (m, q) => {
+    const es = m[1].match(/de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)/i)?.[1];
+    const month = es ? MONTHS_ES_EN[es.toLowerCase()] : q.match(/(January|February|March|April|May|June|July|August|September|October|November|December) electric bill/)?.[1];
+    add("mentions_evidence", "Has a utility bill (not uploaded)", `${month ? `${month} ` : ""}electric bill in email`, q, "has:proof_of_occupancy", 0.82);
+  });
 
   return { docId: doc.id, evidenceTypes: classify(doc, facts), facts, method: "rules" };
 }
 
-/** Which evidence categories a document can satisfy. */
-export function classify(doc: CaseDocument, facts: Fact[]): EvidenceType[] {
+/** Household context that some evidence needs before it counts (see occupancyCheck). */
+export interface ClassifyContext {
+  /** The damaged home's address. */
+  address: string;
+  /** Earliest date of loss across all documents (ISO), if any document states one. */
+  dateOfLoss?: string;
+}
+
+const SUFFIX: Record<string, string> = { lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd", boulevard: "blvd" };
+/** "1847 Cypress Bayou Lane, Houston" → "1847cypressbayouln": street line only, suffixes abbreviated. */
+export function streetKey(address: string): string {
+  return address.split(",")[0].toLowerCase().split(/\s+/).map((w) => SUFFIX[w.replace(/\./g, "")] ?? w).join("").replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * A utility bill is proof of occupancy only if its service address is the
+ * damaged home and its billing period ends before the date of loss (FEMA asks
+ * for proof dated before the disaster).
+ */
+export function occupancyCheck(facts: Fact[], ctx: ClassifyContext): { ok: boolean; reason: string } {
+  const home = streetKey(ctx.address);
+  const addressOk = facts.some((f) => f.type === "address" && streetKey(f.value) === home);
+  const end = facts.find((f) => f.type === "billing_period" && f.normalized?.startsWith("billing_end:"))?.normalized?.slice(12);
+  if (!addressOk) return { ok: false, reason: `the service address does not match ${ctx.address.split(",")[0]}` };
+  if (!end) return { ok: false, reason: "no billing period found on the bill" };
+  if (!ctx.dateOfLoss) return { ok: false, reason: "no date of loss on file to compare the billing period with" };
+  if (end >= ctx.dateOfLoss) return { ok: false, reason: `the billing period ends ${end}, not before the date of loss (${ctx.dateOfLoss})` };
+  return { ok: true, reason: `service address matches ${ctx.address.split(",")[0]} and the billing period ends ${end}, before the earliest date of loss (${ctx.dateOfLoss})` };
+}
+
+/**
+ * Which evidence categories a document can satisfy. A utility bill needs the
+ * household context (address and date of loss), so without `ctx` it is left
+ * unclassified until the coordinator's occupancy check runs.
+ */
+export function classify(doc: CaseDocument, facts: Fact[], ctx?: ClassifyContext): EvidenceType[] {
   const out = new Set<EvidenceType>();
   if (doc.kind === "photo") out.add("damage_photo");
   if (doc.kind === "estimate") out.add("repair_estimate");
   if (doc.kind === "fema_letter") out.add("fema_determination");
   if (doc.kind === "insurance_email") out.add("insurance_correspondence");
-  if (doc.kind === "utility_bill") out.add("proof_of_occupancy");
+  if (OCCUPANCY_KINDS.includes(doc.kind) && ctx && occupancyCheck(facts, ctx).ok) out.add("proof_of_occupancy");
+  if (doc.kind === "id_card") out.add("proof_of_identity");
+  if (doc.kind === "insurance_policy") out.add("insurance_policy");
+  if (doc.kind === "medical_letter") out.add("medical_need_documentation");
+  if (doc.kind === "receipt") out.add("loss_receipts");
   if (doc.kind === "voice_note" && facts.some((f) => f.type === "need")) out.add("loss_statement");
   return [...out];
 }

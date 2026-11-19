@@ -1,23 +1,30 @@
 import { NextResponse } from "next/server";
-import { DEMO_TODAY, documents, household } from "@/data/household";
-import { runCase } from "@/lib/agents/coordinator";
-import { extractWithClaude } from "@/lib/agents/llmExtract";
+import { CaseError } from "@/lib/cases";
+import { UnknownDocumentError } from "@/lib/runDemo";
+import { readRunRequest, runRequested } from "@/lib/runRequest";
 
 export const dynamic = "force-dynamic";
+// Worst case with Claude is ~15 s (per-document limit, documents run in parallel).
+export const maxDuration = 120;
 
 // POST /api/run — runs the full agent pipeline on the demo household.
 // Uses Claude for extraction only when ANTHROPIC_API_KEY is set; otherwise the
-// rules-based extractor. The response says which one ran.
-export async function POST() {
-  const useClaude = Boolean(process.env.ANTHROPIC_API_KEY);
-  const state = await runCase({
-    caseId: household.caseId,
-    householdName: household.name,
-    address: household.address,
-    disaster: household.disaster,
-    today: DEMO_TODAY,
-    documents,
-    extractor: useClaude ? extractWithClaude : undefined,
-  });
-  return NextResponse.json({ state, extraction: useClaude ? "claude" : "rules" });
+// rules-based extractor. Claude problems fall back to rules per document, so
+// this only fails on a real bug in the deterministic pipeline.
+//
+// Body (optional): { addDocumentIds?: string[] } adds synthetic follow-up
+// documents by id from the server's allow-list (e.g. the September electric bill).
+export async function POST(req: Request) {
+  const parsed = await readRunRequest(req);
+  if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  try {
+    const state = await runRequested(parsed);
+    // `extraction` reports what actually ran per document, not whether a key is set.
+    return NextResponse.json({ state, extraction: state.extraction });
+  } catch (err) {
+    if (err instanceof UnknownDocumentError) return NextResponse.json({ error: err.message }, { status: 400 });
+    if (err instanceof CaseError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error("[BayouBridge] /api/run failed:", err);
+    return NextResponse.json({ error: "The agent pipeline failed. See the server log." }, { status: 500 });
+  }
 }

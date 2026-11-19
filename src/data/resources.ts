@@ -92,11 +92,11 @@ export const programs: ProgramRule[] = [
     agency: "Retail electric provider (Public Utility Commission of Texas rules)",
     summary:
       "Households with someone who depends on electric medical equipment can ask to be listed as critical care customers.",
-    triggers: [{ need: "medical_power", description: "Household member uses an oxygen concentrator" }],
+    triggers: [{ need: "medical_power", description: "Household member uses {equipment}" }], // {equipment}: from the need fact
     requires: [
       { type: "medical_need_documentation", label: EVIDENCE_LABELS.medical_need_documentation },
     ],
-    nextAction: "Ask Carmen's doctor to fill out the provider's critical care form.",
+    nextAction: "Ask {member}'s doctor to fill out the provider's critical care form.", // {member}: who uses the equipment
     source: { label: "Public Utility Commission of Texas", url: "https://www.puc.texas.gov" },
     caveat: "Possible match. A designation does not guarantee power during an outage. Keep a backup plan.",
   },
