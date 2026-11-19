@@ -41,6 +41,8 @@ export function sameName(a: string, b: string): boolean {
 /** What household-specific wording needs: the street, and who depends on powered medical equipment. */
 export interface CaseContext {
   street: string;
+  /** Who approves outbound packets: a navigator (classic view) or the household itself (consumer app). */
+  approver?: "navigator" | "household";
   medical?: { first?: string; relation?: string; equipment: string };
 }
 
@@ -55,15 +57,16 @@ function medicalFactFor(person: Fact, facts: Fact[]): Fact | undefined {
   return facts.find((n) => n.type === "need" && n.normalized === "medical_power" && n.docId === person.docId && overlaps(n.quote, person.quote));
 }
 
-export function caseContext(address: string, ex: ExtractionResult[]): CaseContext {
+export function caseContext(address: string, ex: ExtractionResult[], approver: CaseContext["approver"] = "navigator"): CaseContext {
   const facts = allFacts(ex);
   const street = address.split(",")[0].trim() || "your home";
   const need = facts.find((f) => f.type === "need" && f.normalized === "medical_power");
-  if (!need) return { street };
+  if (!need) return { street, approver };
   const person = facts.find((f) => f.type === "person" && f.normalized?.startsWith("role:") && medicalFactFor(f, [need]));
   const named = need.value.match(/\(([^,)]+)/)?.[1];
   return {
     street,
+    approver,
     medical: {
       first: person ? person.value.split(/[\s(]/)[0] : named && named !== "household member" ? named : undefined,
       relation: person?.normalized?.slice("role:".length),
@@ -398,7 +401,9 @@ export function buildPlan(
       priority: 2 + days / 100,
       programId: m.programId,
       status: m.blocked ? "blocked" : "needs_approval",
-      detail: m.blocked ? `Waiting on: ${m.blockedBy.join(", ")}` : "Packet is ready. A navigator must approve before anything is sent.",
+      detail: m.blocked ? `Waiting on: ${m.blockedBy.join(", ")}`
+        : ctx.approver === "household" ? "Packet is ready. Nothing is sent until you approve it."
+        : "Packet is ready. A navigator must approve before anything is sent.",
     });
   }
   return tasks.sort((a, b) => a.priority - b.priority);

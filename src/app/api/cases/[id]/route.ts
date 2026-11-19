@@ -8,7 +8,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const rec = getCase((await params).id);
   if (!rec?.profile) return Response.json({ error: "This case has expired or was deleted." }, { status: 404 });
   const { name, address, language, sample } = rec.profile;
-  return Response.json({ profile: { name, address, language, sample }, documents: rec.documents, hasRun: Boolean(rec.state) });
+  return Response.json({ profile: { name, address, language, sample }, documents: rec.documents, state: rec.state ?? null });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

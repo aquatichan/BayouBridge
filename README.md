@@ -8,8 +8,13 @@ Built for [Teen Hacks Houston](https://tripleh.devpost.com/). All households, do
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000, then press "Run agents"
+npm run dev        # http://localhost:3000
 ```
+
+- `/` is the household app: **Start my case** (consent, your address, upload photos, letters and PDFs, or say what happened in your own words) or **Try a sample case** (the synthetic Reyes family). The agents then work the case in a 3D office: each mascot walks to its desk as its agent works, and the camera follows whoever is busiest. Results fill a side panel (a bottom sheet on phones): next steps with approvals, programs, documents, household and the practice outbox. English and Spanish.
+- `/classic` is the original caseworker dashboard on the shared synthetic demo case.
+
+To build while `npm run dev` is running, use a separate output folder so the two don't overwrite each other: `NEXT_DIST_DIR=.next-verify npm run build`.
 
 Optional: set `ANTHROPIC_API_KEY` in `.env.local` to have Claude do the document extraction (and to read uploaded photos and PDFs). Without a key, a rules-based extractor runs instead, so the demo always works offline. Everything after extraction is deterministic code.
 
@@ -48,7 +53,11 @@ documents ─▶ Evidence Agent ─▶ people · needs · conflicts ─▶ Recov
 | `src/lib/store.ts` | In-memory, demo-grade case store: last run, approvals and the sandbox outbox. Resets on restart |
 | `src/app/api/run/stream/route.ts` | Streams agent events live (Server-Sent Events). `src/app/api/run/route.ts` is the non-streaming fallback |
 | `src/app/api/approve/route.ts` | The only place a task can be approved. Blocked tasks are refused (409) |
-| `src/components/Dashboard.tsx` | Case dashboard |
+| `src/components/app/` | The household app: onboarding steps, the results panel, English/Spanish text |
+| `src/components/office/` | The 3D office (React Three Fiber): mascots from `public/models/`, desks, follow camera, labels |
+| `src/lib/office/director.ts` | Turns agent tasks into mascot walk-and-work jobs and picks who the camera follows. No 3D code, unit-tested |
+| `src/lib/cases.ts` | Session cases: create (real or sample), uploads, running a case with Claude reading the files |
+| `src/components/Dashboard.tsx` | The classic caseworker dashboard (`/classic`) |
 | `src/components/RecoveryGraph.tsx` | The evidence → needs → pathways → deadlines graph |
 
 ## Guardrails

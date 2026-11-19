@@ -1,4 +1,4 @@
-import { DEMO_TODAY, documents as sampleDocuments, household as sampleHousehold } from "@/data/household";
+import { DEMO_TODAY, documents as sampleDocuments, followUpDocuments, household as sampleHousehold } from "@/data/household";
 import { runCase, type Extractor, type RunHooks } from "@/lib/agents/coordinator";
 import { extractWithClaude, readUpload } from "@/lib/agents/llmExtract";
 import { addDocuments, createSessionCase, getCase, saveRun, type UploadedFile } from "@/lib/store";
@@ -83,10 +83,17 @@ export async function addUploads(caseId: string, files: File[], statement?: stri
  * Run the agents on a session case. With `incremental`, documents read in the
  * last run are reused, so only new uploads are read (and paid for) again.
  */
-export async function runSessionCase(caseId: string, opts: { incremental?: boolean } & RunHooks = {}): Promise<CaseState> {
-  const { incremental, ...hooks } = opts;
+export async function runSessionCase(caseId: string, opts: { incremental?: boolean; addDocumentIds?: string[] } & RunHooks = {}): Promise<CaseState> {
+  const { incremental, addDocumentIds, ...hooks } = opts;
   const rec = getCase(caseId);
   if (!rec?.profile) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
+  // The sample case can receive the synthetic follow-up documents (the "Electric bill arrives" moment).
+  if (addDocumentIds?.length) {
+    if (!rec.profile.sample) throw new CaseError(400, "Only the sample case takes sample documents.");
+    for (const d of followUpDocuments) {
+      if (addDocumentIds.includes(d.id) && !rec.documents.some((x) => x.id === d.id)) rec.documents.push({ ...d, source: "sample" });
+    }
+  }
   if (!rec.documents.length) throw new CaseError(400, "Add a file or a few words about what happened first.");
   const p = rec.profile;
   const base = {
@@ -98,6 +105,7 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     documents: rec.documents,
     reuse: incremental ? rec.state?.extractions : undefined,
     limits: SESSION_LIMITS,
+    approver: "household" as const, // in the consumer app the household approves what goes out
   };
   const files = rec.files;
   // Uploaded files are read from their bytes; typed words and sample documents from their text.

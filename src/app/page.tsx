@@ -1,6 +1,6 @@
-import Dashboard from "@/components/Dashboard";
-import { DEMO_TODAY, documents, followUpDocuments, household } from "@/data/household";
+import CaseApp from "@/components/app/CaseApp";
 
+// The consumer app. The original caseworker dashboard lives at /classic.
 export default function Home() {
-  return <Dashboard household={household} documents={documents} followUps={followUpDocuments} today={DEMO_TODAY} />;
+  return <CaseApp />;
 }

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { MASCOTS, mascotDef, type MascotId, type OfficeDirector } from "@/lib/office/director";
+import { MASCOTS, STATIONS, mascotDef, type MascotId, type OfficeDirector, type StationId } from "@/lib/office/director";
 import type { FollowMode, ViewControl } from "./OfficeScene";
 
 // The office view: the 3D scene plus a HUD saying who the camera follows and
@@ -22,11 +22,22 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-export default function Office({ director, className = "", hud = true }: { director: OfficeDirector; className?: string; hud?: boolean }) {
+export default function Office({
+  director, className = "", hud = true, followClass = "left-3 top-3", chipsClass = "inset-x-2 bottom-2", rightInset = 0,
+}: {
+  director: OfficeDirector; className?: string; hud?: boolean;
+  /** Where the "Following" card and the agent chips sit (Tailwind position classes). */
+  followClass?: string; chipsClass?: string;
+  /** Pixels on the right covered by a panel, so the camera centers the subject in what's left. */
+  rightInset?: number;
+}) {
   const snap = useSyncExternalStore(director.subscribe, director.getSnapshot, director.getSnapshot);
   const [mode, setMode] = useState<FollowMode>("auto");
   const view = useRef<ViewControl>({ az: 0, zoom: 1 });
   const box = useRef<HTMLDivElement>(null);
+  // Name tags and station signs: ordinary DOM, positioned each frame by the scene.
+  const labels = useRef(new Map<string, HTMLElement>());
+  const label = (key: string) => (el: HTMLElement | null) => { if (el) labels.current.set(key, el); else labels.current.delete(key); };
 
   // Drag sideways to look around; scroll (or pinch-zoom trackpads) to zoom.
   useEffect(() => {
@@ -57,6 +68,7 @@ export default function Office({ director, className = "", hud = true }: { direc
   }, []);
 
   const followed = mode === "auto" ? snap.follow : mode === "overview" ? null : mode;
+  const focus = new Set<StationId>(snap.mascots.filter((m) => m.destination && (m.phase !== "idle" || m.id === followed)).map((m) => m.destination!));
   const f = followed ? snap.mascots.find((m) => m.id === followed) : undefined;
   const def = followed ? mascotDef(followed) : undefined;
   const maxScore = Math.max(1, ...snap.mascots.map((m) => m.score));
@@ -64,12 +76,32 @@ export default function Office({ director, className = "", hud = true }: { direc
   return (
     <div ref={box} className={`relative select-none overflow-hidden ${className}`} style={{ touchAction: "pan-y" }}>
       <SceneBoundary>
-        <OfficeScene director={director} snap={snap} mode={mode} view={view} onPick={(id: MascotId) => setMode(id)} />
+        <OfficeScene director={director} snap={snap} mode={mode} view={view} onPick={(id: MascotId) => setMode(id)} rightInset={rightInset} labels={labels} />
       </SceneBoundary>
+
+      <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden>
+        {(Object.keys(STATIONS) as StationId[]).map((id) => (
+          <div key={id} ref={label(`s:${id}`)} style={{ opacity: 0 }}
+            className={`absolute left-0 top-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-medium will-change-transform ${focus.has(id) ? "bg-ink text-[11px] text-white" : "bg-white/50 text-[10px] text-muted/80"}`}>
+            {STATIONS[id].name}
+          </div>
+        ))}
+        {MASCOTS.map((m) => {
+          const s = snap.mascots.find((x) => x.id === m.id);
+          const on = followed === m.id;
+          return (
+            <div key={m.id} ref={label(`m:${m.id}`)} style={{ opacity: 0, ...(on ? { background: m.color } : {}) }}
+              className={`absolute left-0 top-0 max-w-[240px] truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm will-change-transform ${on ? "border-transparent text-white" : "border-white/70 bg-white/85 text-ink"}`}>
+              {m.name}
+              {s?.label && <span className={`ml-1 font-normal ${on ? "text-white/85" : "text-muted"}`}>· {s.label}</span>}
+            </div>
+          );
+        })}
+      </div>
 
       {hud && (
         <>
-          <div className="pointer-events-none absolute left-3 top-3 z-40 max-w-[min(360px,80%)] rounded-2xl border border-white/70 bg-white/85 px-3 py-2 text-xs shadow-sm backdrop-blur" aria-live="polite">
+          <div className={`pointer-events-none absolute ${followClass} z-40 max-w-[min(360px,80%)] rounded-2xl border border-white/70 bg-white/85 px-3 py-2 text-xs shadow-sm backdrop-blur`} aria-live="polite">
             {def && f ? (
               <>
                 <div className="flex items-center gap-1.5">
@@ -82,7 +114,7 @@ export default function Office({ director, className = "", hud = true }: { direc
                     : f.phase === "working" ? <>{f.label} <span className="text-muted">at the {f.station}</span></>
                     : def.role}
                 </div>
-                {f.queued > 0 && <div className="mt-0.5 text-[11px] text-amber">{f.queued} more task{f.queued > 1 ? "s" : ""} lined up</div>}
+                {f.queued > 0 && <div className="mt-0.5 hidden text-[11px] text-amber sm:block">{f.queued} more task{f.queued > 1 ? "s" : ""} lined up</div>}
               </>
             ) : (
               <>
@@ -92,24 +124,24 @@ export default function Office({ director, className = "", hud = true }: { direc
             )}
           </div>
 
-          <div className="absolute inset-x-2 bottom-2 z-40 flex flex-wrap items-center justify-center gap-1">
-            <button onClick={() => setMode("auto")} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm ${mode === "auto" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Auto</button>
+          <div className={`absolute ${chipsClass} z-40 flex flex-wrap items-center justify-center gap-1`}>
+            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Auto</button>
             {MASCOTS.map((m) => {
               const s = snap.mascots.find((x) => x.id === m.id)!;
               const on = mode === m.id;
               return (
                 <button key={m.id} onClick={() => setMode(m.id)} title={`${m.name}: ${m.role}`}
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm ${on ? "text-white" : "bg-white/85 text-ink"}`}
+                  className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${on ? "text-white" : "bg-white/85 text-ink"}`}
                   style={on ? { background: m.color } : undefined}>
                   <span className="h-2 w-2 rounded-full" style={{ background: on ? "#fff" : m.color }} />
                   {m.name}
-                  <span className="h-1 w-6 overflow-hidden rounded-full bg-black/10" aria-hidden>
+                  <span className="hidden h-1 w-6 overflow-hidden rounded-full bg-black/10 sm:inline-block" aria-hidden>
                     <span className="block h-full rounded-full" style={{ width: `${(s.score / maxScore) * 100}%`, background: on ? "#fff" : m.color }} />
                   </span>
                 </button>
               );
             })}
-            <button onClick={() => setMode("overview")} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm ${mode === "overview" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Whole office</button>
+            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Whole office</button>
           </div>
         </>
       )}

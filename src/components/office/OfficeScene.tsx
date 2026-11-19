@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ContactShadows, Html, useAnimations, useGLTF } from "@react-three/drei";
+import { ContactShadows, useAnimations, useGLTF } from "@react-three/drei";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
@@ -9,8 +9,10 @@ import {
   type MascotDef, type MascotId, type OfficeDirector, type OfficeSnapshot, type StationId,
 } from "@/lib/office/director";
 
-// The 3D office. Everything that moves reads the OfficeDirector every frame;
-// React only re-renders for labels (the snapshot changes a few times a second).
+// The 3D office. Everything that moves reads the OfficeDirector every frame.
+// Name tags and station signs are plain DOM elements in the overlay (Office.tsx),
+// moved here every frame by projecting their 3D anchor to the screen. (drei's
+// <Html> creates a React root per label, which React 19 warns about on unmount.)
 
 export type FollowMode = "auto" | "overview" | MascotId;
 export interface ViewControl { az: number; zoom: number }
@@ -36,9 +38,10 @@ function Ticker({ director }: { director: OfficeDirector }) {
   return null;
 }
 
-function Mascot({ def, director, snap, followed, onPick }: {
-  def: MascotDef; director: OfficeDirector; snap: OfficeSnapshot["mascots"][number] | undefined;
-  followed: boolean; onPick: (id: MascotId) => void;
+function Mascot({ def, director, followed, onPick, tops }: {
+  def: MascotDef; director: OfficeDirector; followed: boolean; onPick: (id: MascotId) => void;
+  /** Where each mascot's name tag goes (just above its head), shared with the label projector. */
+  tops: React.RefObject<Partial<Record<MascotId, number>>>;
 }) {
   const root = useRef<THREE.Group>(null!);
   const halo = useRef<THREE.Mesh>(null!);
@@ -46,7 +49,9 @@ function Mascot({ def, director, snap, followed, onPick }: {
   const { actions } = useAnimations(animations, root);
   const walking = useRef(false);
   // Put the name tag just above this model's own head (the gate mascot is taller than the rest).
-  const top = useMemo(() => new THREE.Box3().setFromObject(scene).max.y * SCALE + FEET + 0.35, [scene]);
+  useEffect(() => {
+    tops.current[def.id] = new THREE.Box3().setFromObject(scene).max.y * SCALE + FEET + 0.35;
+  }, [scene, def.id, tops]);
 
   useEffect(() => {
     scene.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
@@ -82,13 +87,6 @@ function Mascot({ def, director, snap, followed, onPick }: {
         <ringGeometry args={[1.25, 1.5, 48]} />
         <meshBasicMaterial color={def.color} transparent opacity={followed ? 0.9 : 0.45} />
       </mesh>
-      <Html position={[0, top, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
-        <div className={`max-w-[240px] truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm transition ${followed ? "border-transparent text-white" : "border-white/70 bg-white/85 text-ink"}`}
-          style={followed ? { background: def.color } : undefined}>
-          {def.name}
-          {snap?.label && <span className={`ml-1 font-normal ${followed ? "text-white/85" : "text-muted"}`}>· {snap.label}</span>}
-        </div>
-      </Html>
     </group>
   );
 }
@@ -240,25 +238,63 @@ function Prop({ id, color, snap }: { id: StationId; color: string; snap: OfficeS
   }
 }
 
-function Stations({ snap, focus }: { snap: OfficeSnapshot; focus: Set<StationId> }) {
+/** Where a station's prop stands: just outside its stand-here spot. */
+export function propPosition(id: StationId) {
+  const s = STATIONS[id];
+  const r = Math.hypot(s.spot.x, s.spot.z);
+  const k = (r + PROP_OUT) / r;
+  return { x: s.spot.x * k, z: s.spot.z * k };
+}
+
+function Stations({ snap }: { snap: OfficeSnapshot }) {
   return (
     <>
       {(Object.keys(STATIONS) as StationId[]).map((id) => {
-        const s = STATIONS[id];
-        const r = Math.hypot(s.spot.x, s.spot.z);
-        const k = (r + PROP_OUT) / r;
+        const p = propPosition(id);
         const owner = MASCOTS.find((m) => m.home === id);
         return (
-          <group key={id} position={[s.spot.x * k, 0, s.spot.z * k]} rotation-y={s.facing + Math.PI}>
+          <group key={id} position={[p.x, 0, p.z]} rotation-y={STATIONS[id].facing + Math.PI}>
             <Prop id={id} color={owner?.color ?? "#c9c1ad"} snap={snap} />
-            <Html position={[0, 2.75, 0]} center zIndexRange={[10, 0]} style={{ pointerEvents: "none" }}>
-              <div className={`whitespace-nowrap rounded-md px-1.5 py-0.5 font-medium transition ${focus.has(id) ? "bg-ink text-[11px] text-white" : "bg-white/50 text-[10px] text-muted/80"}`}>{s.name}</div>
-            </Html>
           </group>
         );
       })}
     </>
   );
+}
+
+/**
+ * Moves the overlay's DOM labels to their 3D anchors every frame: "m:<mascot>"
+ * above a mascot's head, "s:<station>" above a station's prop. Nearer labels
+ * stack on top; labels behind the camera are hidden.
+ */
+function LabelProjector({ director, labels, tops }: {
+  director: OfficeDirector; labels: React.RefObject<Map<string, HTMLElement>>; tops: React.RefObject<Partial<Record<MascotId, number>>>;
+}) {
+  const { camera, size } = useThree();
+  const v = useRef(new THREE.Vector3());
+  useFrame(() => {
+    camera.updateMatrixWorld(); // the rig just moved the camera; project with this frame's view, not last frame's
+    for (const [key, el] of labels.current) {
+      const [kind, id] = key.split(":");
+      if (kind === "m") {
+        const m = director.mascots[id as MascotId];
+        if (!m) continue;
+        v.current.set(m.pos.x, tops.current[id as MascotId] ?? 2.7, m.pos.z);
+      } else {
+        const p = propPosition(id as StationId);
+        v.current.set(p.x, 2.75, p.z);
+      }
+      v.current.project(camera);
+      const visible = v.current.z < 1 && Math.abs(v.current.x) < 1.3 && Math.abs(v.current.y) < 1.3;
+      el.style.opacity = visible ? "1" : "0";
+      if (!visible) continue;
+      const x = ((v.current.x + 1) / 2) * size.width;
+      const y = ((1 - v.current.y) / 2) * size.height;
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+      el.style.zIndex = String(Math.round((1 - v.current.z) * 10000));
+    }
+  });
+  return null;
 }
 
 function Room() {
@@ -273,8 +309,9 @@ function Room() {
   );
 }
 
-function CameraRig({ director, mode, view }: { director: OfficeDirector; mode: FollowMode; view: React.RefObject<ViewControl> }) {
-  const { camera } = useThree();
+function CameraRig({ director, mode, view, rightInset }: { director: OfficeDirector; mode: FollowMode; view: React.RefObject<ViewControl>; rightInset: number }) {
+  const { camera, size } = useThree();
+  const right = useRef(new THREE.Vector3());
   const look = useRef(new THREE.Vector3(0, 0, 0));
   const want = useRef(new THREE.Vector3());
   const wantLook = useRef(new THREE.Vector3());
@@ -284,7 +321,9 @@ function CameraRig({ director, mode, view }: { director: OfficeDirector; mode: F
     const id = mode === "auto" ? director.follow : mode === "overview" ? null : mode;
     const m = id ? director.mascots[id] : null;
     const { az, zoom } = view.current ?? { az: 0, zoom: 1 };
-    const dist = (m ? 9 : 17) * zoom, h = (m ? 5.8 : 12.5) * zoom;
+    // Narrow (phone) views see less side to side, so step back to keep the same framing.
+    const narrow = Math.min(1.8, Math.max(1, 1.25 / (size.width / size.height)));
+    const dist = (m ? 11.5 : 17) * zoom * narrow, h = (m ? 7 : 12.5) * zoom * narrow;
     const tx = m ? m.pos.x : 0, tz = m ? m.pos.z : -0.8;
     // Desks ring the room and the middle is open, so shooting from the middle outward never
     // puts another desk or mascot between the camera and the one being followed.
@@ -293,6 +332,17 @@ function CameraRig({ director, mode, view }: { director: OfficeDirector; mode: F
     const a = baseAz.current + az + (m ? 0.6 : 0); // a little off-center: a three-quarter view, not straight at their back
     want.current.set(tx + Math.sin(a) * dist, h, tz + Math.cos(a) * dist);
     wantLook.current.set(tx, m ? 1.1 : 0, tz);
+    // A panel covers the right side of the screen: slide the view sideways so the
+    // subject sits in the middle of the part you can still see.
+    if (rightInset > 0 && size.width > rightInset) {
+      const cam = camera as THREE.PerspectiveCamera;
+      const fwd = right.current.subVectors(wantLook.current, want.current);
+      const d = fwd.length();
+      fwd.cross(camera.up).normalize();
+      const shift = d * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * (size.width / size.height) * (rightInset / size.width);
+      want.current.addScaledVector(fwd, shift);
+      wantLook.current.addScaledVector(fwd, shift);
+    }
     const k = reduced ? 1 : 1 - Math.exp(-2.4 * dt);
     camera.position.lerp(want.current, k);
     look.current.lerp(wantLook.current, k);
@@ -301,15 +351,19 @@ function CameraRig({ director, mode, view }: { director: OfficeDirector; mode: F
   return null;
 }
 
-export default function OfficeScene({ director, snap, mode, view, onPick }: {
+export default function OfficeScene({ director, snap, mode, view, onPick, rightInset = 0, labels }: {
   director: OfficeDirector; snap: OfficeSnapshot; mode: FollowMode; view: React.RefObject<ViewControl>; onPick: (id: MascotId) => void;
+  /** Pixels on the right covered by a panel; the camera centers the subject in the rest. */
+  rightInset?: number;
+  /** The overlay's label elements, keyed "m:<mascot>" and "s:<station>". */
+  labels: React.RefObject<Map<string, HTMLElement>>;
 }) {
   const followed = mode === "auto" ? snap.follow : mode === "overview" ? null : mode;
-  const focus = new Set<StationId>(snap.mascots.filter((m) => m.destination && (m.phase !== "idle" || m.id === followed)).map((m) => m.destination!));
+  const tops = useRef<Partial<Record<MascotId, number>>>({});
   return (
     <Canvas
       camera={{ position: [0, 12.5, 16], fov: 40, near: 0.1, far: 200 }}
-      dpr={[1, 1.75]}
+      dpr={[1, 1.5]}
       fallback={<div className="grid h-full place-items-center text-sm text-muted">This device can&apos;t show the 3D office.</div>}
     >
       <color attach="background" args={["#f5f1e8"]} />
@@ -318,15 +372,16 @@ export default function OfficeScene({ director, snap, mode, view, onPick }: {
       <hemisphereLight args={["#fff6e5", "#c9c1ad", 1.1]} />
       <directionalLight position={[8, 16, 10]} intensity={1.6} />
       <Room />
-      <Stations snap={snap} focus={focus} />
+      <Stations snap={snap} />
       <Suspense fallback={null}>
         {MASCOTS.map((def) => (
-          <Mascot key={def.id} def={def} director={director} snap={snap.mascots.find((m) => m.id === def.id)} followed={followed === def.id} onPick={onPick} />
+          <Mascot key={def.id} def={def} director={director} followed={followed === def.id} onPick={onPick} tops={tops} />
         ))}
       </Suspense>
       {MASCOTS.map((def) => <Destination key={def.id} def={def} director={director} />)}
       <ContactShadows position={[0, 0.01, 0]} scale={30} opacity={0.3} blur={2.4} far={4} resolution={512} />
-      <CameraRig director={director} mode={mode} view={view} />
+      <CameraRig director={director} mode={mode} view={view} rightInset={rightInset} />
+      <LabelProjector director={director} labels={labels} tops={tops} />
     </Canvas>
   );
 }

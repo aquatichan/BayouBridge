@@ -67,6 +67,8 @@ export async function runCase(input: {
   documents: CaseDocument[]; extractor?: Extractor; limits?: Partial<RunLimits>;
   /** Extractions from an earlier run to reuse by document id (incremental re-run when a new document arrives). */
   reuse?: ExtractionResult[];
+  /** Who approves outbound packets. The consumer app's household approves for itself; default: a navigator. */
+  approver?: "navigator" | "household";
   /** Test hook: called before each task runs; throw to simulate that step failing. */
   beforeTask?: (taskId: string) => void;
 } & RunHooks): Promise<CaseState> {
@@ -89,7 +91,7 @@ export async function runCase(input: {
   };
   let aliasNotes: string[] = [];
   /** Household wording (street, who uses medical equipment), read from the facts so far. */
-  const ctx = () => caseContext(input.address, state.extractions);
+  const ctx = () => caseContext(input.address, state.extractions, input.approver);
   // Bills and statements can only count once every document is read. Uploads ("other" until
   // Claude reads them) might turn out to be one, so they get the check too.
   const mayHaveBills = input.documents.some((d) => OCCUPANCY_KINDS.includes(d.kind) || d.source === "upload");
@@ -250,7 +252,7 @@ export async function runCase(input: {
         // Every outbound action needs a navigator's approval, which only the server's approve route can record.
         state.plan = state.plan.map((t) => (t.owner === "BayouBridge" ? { ...t, requiresApproval: true } : t));
         const gated = state.plan.filter((t) => t.status !== "blocked" && t.requiresApproval).length;
-        log("Safety Agent", "Applied approval gates", `${gated} outbound actions held for navigator approval. Nothing is sent or submitted automatically.`);
+        log("Safety Agent", "Applied approval gates", `${gated} outbound actions held for ${input.approver === "household" ? "your" : "navigator"} approval. Nothing is sent or submitted automatically.`);
       },
     },
     {

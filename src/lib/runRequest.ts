@@ -21,7 +21,6 @@ export async function readRunRequest(req: Request): Promise<RunRequest | { error
     if (!getCase(body.caseId)?.profile) return { error: "This case has expired or was deleted. Please start again.", status: 404 };
     out.caseId = body.caseId;
     out.incremental = body.incremental === true;
-    return out;
   }
   const ids = body.addDocumentIds;
   if (ids === undefined) return out;
@@ -34,6 +33,6 @@ export async function readRunRequest(req: Request): Promise<RunRequest | { error
 
 export function runRequested(r: RunRequest, hooks: RunHooks = {}): Promise<CaseState> {
   return r.caseId
-    ? runSessionCase(r.caseId, { incremental: r.incremental, ...hooks })
+    ? runSessionCase(r.caseId, { incremental: r.incremental, addDocumentIds: r.addDocumentIds, ...hooks })
     : runDemoCase({ addDocumentIds: r.addDocumentIds, ...hooks });
 }
