@@ -70,6 +70,8 @@ export interface ExtractionResult {
   evidenceTypes: EvidenceType[];
   facts: Fact[];
   method: "rules" | "claude";
+  /** What validation changed in Claude's output: "repaired: ...", "dropped: ...", "filled from rules: ...". */
+  issues?: string[];
 }
 
 export type NeedKey =

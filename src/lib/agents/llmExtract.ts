@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import type { CaseDocument, ExtractionResult, FactType } from "@/lib/types";
-import { classify, parseDate } from "./evidence";
+import type { CaseDocument, ExtractionResult, Fact, FactType } from "@/lib/types";
+import { classify } from "./evidence";
 import { ExtractionError } from "./util";
+import { fillFromRules, validateFacts } from "./validate";
 
 // Evidence Agent — Claude extraction path. Only used when ANTHROPIC_API_KEY is
 // set on the server. The LLM only pulls facts out of text; every decision after
@@ -100,18 +101,37 @@ export async function extractWithClaude(doc: CaseDocument, opts: { signal?: Abor
   if (response.stop_reason === "refusal") throw new ExtractionError("refusal", "Claude declined to extract this document");
   if (response.stop_reason === "max_tokens") throw new ExtractionError("validation", "Claude's output was cut off at max_tokens");
   if (!response.parsed_output) throw new ExtractionError("validation", `no structured output (stop reason: ${response.stop_reason})`);
+  return fromClaudeOutput(doc, response.parsed_output.facts);
+}
 
-  const facts = response.parsed_output.facts.map((f, i) => ({
+export type ClaudeFact = z.infer<typeof Extraction>["facts"][number];
+
+/**
+ * Turn Claude's raw facts into an ExtractionResult the rules engine can trust:
+ * validate quotes and normalized values, then add back anything the offline
+ * rules extractor finds that Claude missed. Pure, so tests can call it directly.
+ */
+export function fromClaudeOutput(doc: CaseDocument, raw: ClaudeFact[]): ExtractionResult {
+  const facts: Fact[] = raw.map((f, i) => ({
     id: `${doc.id}#c${i + 1}`,
     docId: doc.id,
     type: f.type as FactType,
     label: f.label,
     value: f.value,
-    normalized:
-      f.normalized ||
-      (f.type === "date_of_loss" ? parseDate(f.value) : undefined),
-    confidence: Math.max(0, Math.min(1, f.confidence)),
+    normalized: f.normalized || undefined,
+    confidence: f.confidence,
     quote: f.quote,
   }));
-  return { docId: doc.id, evidenceTypes: classify(doc, facts), facts, method: "claude" };
+  const checked = validateFacts(doc, facts);
+  if (!checked.facts.length) {
+    throw new ExtractionError("validation", raw.length ? `none of Claude's ${raw.length} facts passed validation` : "Claude returned no facts");
+  }
+  const filled = fillFromRules(doc, checked.facts);
+  return {
+    docId: doc.id,
+    evidenceTypes: classify(doc, filled.facts),
+    facts: filled.facts,
+    method: "claude",
+    issues: [...checked.issues, ...filled.issues],
+  };
 }

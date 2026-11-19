@@ -1,6 +1,7 @@
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult } from "@/lib/types";
 import { extractWithRules } from "./evidence";
 import { fallbackReason, withTimeout } from "./util";
+import { summarizeIssues } from "./validate";
 import {
   buildGraph, buildPlan, deriveNeeds, evidenceScore, findConflicts, matchPrograms, pickFollowUp, resolvePeople,
 } from "./recovery";
@@ -99,7 +100,7 @@ export async function runCase(input: {
         const ex = await extract(d);
         state.extractions.push(ex);
         const types = ex.evidenceTypes.length ? ex.evidenceTypes.join(", ").replaceAll("_", " ") : "context only";
-        log("Evidence Agent", `Read ${d.filename}`, `${ex.facts.length} facts extracted (${ex.method}). Classified as: ${types}.`, [d.id], MANUAL_MINUTES.extract);
+        log("Evidence Agent", `Read ${d.filename}`, `${ex.facts.length} facts extracted (${ex.method}${summarizeIssues(ex.issues)}). Classified as: ${types}.`, [d.id], MANUAL_MINUTES.extract);
       },
     })),
     {
