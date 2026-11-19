@@ -47,6 +47,7 @@ export async function runCase(input: {
     caseId: input.caseId, householdName: input.householdName, address: input.address, disaster: input.disaster,
     today: input.today, documents: input.documents, extractions: [], people: [], needs: [], conflicts: [],
     matches: [], plan: [], graph: { nodes: [], edges: [] }, evidenceScore: 0, events, minutesSaved: 0,
+    extraction: { claude: 0, rules: 0, fellBack: 0, mode: "rules" },
   };
   let aliasNotes: string[] = [];
 
@@ -174,6 +175,13 @@ export async function runCase(input: {
   }
   // Keep document order stable regardless of which extraction finished first.
   state.extractions.sort((a, b) => input.documents.findIndex((d) => d.id === a.docId) - input.documents.findIndex((d) => d.id === b.docId));
+  const claude = state.extractions.filter((e) => e.method === "claude").length;
+  const rules = state.extractions.length - claude;
+  state.extraction = {
+    claude, rules,
+    fellBack: input.extractor ? rules : 0, // with Claude configured, every rules read is a fallback
+    mode: claude === 0 ? "rules" : rules === 0 ? "claude" : "mixed",
+  };
   state.minutesSaved = events.reduce((s, e) => s + (e.minutesSaved ?? 0), 0);
   log("Coordinator", "Run complete", `About ${state.minutesSaved} minutes of manual casework done (estimate).`);
   return state;

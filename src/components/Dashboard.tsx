@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ActivityEvent, AgentName, CaseDocument, CaseState, PlanTask } from "@/lib/types";
+import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, PlanTask } from "@/lib/types";
+import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import RecoveryGraph from "./RecoveryGraph";
 import Capybara from "./Capybara";
 
@@ -46,7 +47,7 @@ function Waiting({ children }: { children: React.ReactNode }) {
 
 export default function Dashboard({ household, documents, today }: { household: Household; documents: CaseDocument[]; today: string }) {
   const [state, setState] = useState<CaseState | null>(null);
-  const [mode, setMode] = useState<"rules" | "claude" | null>(null);
+  const [mode, setMode] = useState<ExtractionSummary | null>(null);
   const [shown, setShown] = useState(0);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,8 +62,8 @@ export default function Dashboard({ household, documents, today }: { household: 
     try {
       const res = await fetch("/api/run", { method: "POST" });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data = (await res.json()) as { state: CaseState; extraction: "rules" | "claude" };
-      setState(data.state); setMode(data.extraction);
+      const data = (await res.json()) as { state: CaseState; extraction: ExtractionSummary };
+      setState(data.state); setMode(data.state.extraction ?? data.extraction);
     } catch (e) {
       setError((e as Error).message); setRunning(false);
     }
@@ -116,7 +117,7 @@ export default function Dashboard({ household, documents, today }: { household: 
           <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full bg-amber-soft px-2.5 py-1 font-medium text-amber">Synthetic demo data</span>
             <span className="rounded-full border border-line px-2.5 py-1 text-muted">Demo date {fmtDate(today)}</span>
-            {mode && <span className="rounded-full border border-line px-2.5 py-1 text-muted">Extraction: {mode === "claude" ? "Claude" : "rules engine"}</span>}
+            {mode && <span className="rounded-full border border-line px-2.5 py-1 text-muted" title={extractionTooltip(mode)}>Extraction: {extractionLabel(mode)}</span>}
             <span className="rounded-full bg-bayou-soft px-2.5 py-1 font-semibold text-bayou" title="Estimated minutes of manual casework done by agents">
               ⏱ {minutes} min saved
             </span>

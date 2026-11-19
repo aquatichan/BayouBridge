@@ -174,6 +174,15 @@ export interface ActivityEvent {
   minutesSaved?: number;
 }
 
+/** Which extractor actually read the documents in a run (not just whether a key is set). */
+export interface ExtractionSummary {
+  claude: number;
+  rules: number;
+  /** Documents meant for Claude that the rules engine read instead (timeout, refusal, validation, error, breaker). */
+  fellBack: number;
+  mode: "claude" | "rules" | "mixed";
+}
+
 export interface CaseState {
   caseId: string;
   householdName: string;
@@ -192,4 +201,5 @@ export interface CaseState {
   evidenceScore: number; // 0..100
   events: ActivityEvent[];
   minutesSaved: number;
+  extraction: ExtractionSummary;
 }

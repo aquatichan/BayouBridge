@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { claudeConfigured, runDemoCase } from "@/lib/runDemo";
+import { runDemoCase } from "@/lib/runDemo";
 
 export const dynamic = "force-dynamic";
 // Worst case with Claude is ~15 s (per-document limit, documents run in parallel).
@@ -12,7 +12,8 @@ export const maxDuration = 60;
 export async function POST() {
   try {
     const state = await runDemoCase();
-    return NextResponse.json({ state, extraction: claudeConfigured() ? "claude" : "rules" });
+    // `extraction` reports what actually ran per document, not whether a key is set.
+    return NextResponse.json({ state, extraction: state.extraction });
   } catch (err) {
     console.error("[BayouBridge] /api/run failed:", err);
     return NextResponse.json({ error: "The agent pipeline failed. See the server log." }, { status: 500 });
