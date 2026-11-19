@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Capybara from "@/components/Capybara";
 import Office from "@/components/office/Office";
 import { shrinkImage } from "@/lib/client/files";
 import { RunError, streamRun } from "@/lib/client/stream";
@@ -283,10 +282,6 @@ export default function CaseApp() {
           />
         </div>
       )}
-
-      <div className="fixed bottom-3 right-3 z-40 md:bottom-4 md:right-[452px]">
-        <Capybara minutesSaved={minutes} cheer={cheer} />
-      </div>
     </div>
   );
 }

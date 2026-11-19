@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import RecoveryGraph from "./RecoveryGraph";
-import Capybara from "./Capybara";
 import Office from "./office/Office";
 import { OfficeDirector } from "@/lib/office/director";
 
@@ -565,7 +564,6 @@ export default function Dashboard({ household, documents, followUps, today }: {
           BayouBridge uses only synthetic households and fabricated documents. It suggests possible pathways from cited
           sources and never decides eligibility or submits anything without a person&apos;s approval.
         </p>
-        <Capybara minutesSaved={minutes} cheer={cheer} />
       </footer>
     </div>
   );
