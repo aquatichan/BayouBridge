@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { CaseDocument, ExtractionResult, FactType } from "@/lib/types";
 import { classify, parseDate } from "./evidence";
+import { ExtractionError } from "./util";
 
 // Evidence Agent — Claude extraction path. Only used when ANTHROPIC_API_KEY is
 // set on the server. The LLM only pulls facts out of text; every decision after
@@ -42,24 +43,64 @@ Normalization rules for "normalized":
 - otherwise an empty string.
 For money facts use labels: "Repair estimate total", "Hurricane deductible", "Food lost in outage (estimated)", "Interior repair line items".`;
 
-const client = new Anthropic();
+/** Per-request SDK timeout. The coordinator adds its own backstop on top (see coordinator.ts). */
+export const CLAUDE_REQUEST_TIMEOUT_MS = 12_000;
 
-export async function extractWithClaude(doc: CaseDocument): Promise<ExtractionResult> {
-  const response = await client.messages.parse({
-    model: "claude-opus-5-5",
-    max_tokens: 16000,
-    output_config: { effort: "low", format: zodOutputFormat(Extraction) },
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Document type: ${doc.kind}\nFilename: ${doc.filename}\n\n<document>\n${doc.text}\n</document>`,
-      },
-    ],
-  });
-  if (response.stop_reason === "refusal" || !response.parsed_output) {
-    throw new Error(`Extraction failed for ${doc.id}: ${response.stop_reason}`);
+// Created on first use, not at import: a module-scope client can throw while
+// the route module loads if the environment is odd, which would break the
+// offline path too.
+let client: Anthropic | undefined;
+
+function getClient(): Anthropic {
+  if (!client) {
+    try {
+      client = new Anthropic();
+    } catch (err) {
+      throw new ExtractionError("error", `could not create the Anthropic client: ${(err as Error).message}`);
+    }
   }
+  return client;
+}
+
+/** Map SDK errors to a fallback reason using the SDK's typed error classes. */
+function toExtractionError(err: unknown): Error {
+  if (err instanceof ExtractionError) return err;
+  if (err instanceof Anthropic.APIConnectionTimeoutError) return new ExtractionError("timeout", "Claude request timed out");
+  if (err instanceof Anthropic.APIUserAbortError) return new ExtractionError("timeout", "Claude request was cancelled");
+  if (err instanceof Anthropic.AuthenticationError) return new ExtractionError("error", "API key was rejected (401)");
+  if (err instanceof Anthropic.APIConnectionError) return new ExtractionError("error", "could not reach the Claude API");
+  if (err instanceof Anthropic.APIError) return new ExtractionError("error", `Claude API returned ${err.status ?? "an error"}`);
+  // Non-HTTP SDK errors from .parse() mean the structured output did not match the schema.
+  if (err instanceof Anthropic.AnthropicError) return new ExtractionError("validation", err.message.split("\n")[0]);
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+export async function extractWithClaude(doc: CaseDocument, opts: { signal?: AbortSignal } = {}): Promise<ExtractionResult> {
+  let response;
+  try {
+    response = await getClient().messages.parse(
+      {
+        model: "claude-opus-5-5",
+        max_tokens: 4000,
+        output_config: { effort: "low", format: zodOutputFormat(Extraction) },
+        system: SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: `Document type: ${doc.kind}\nFilename: ${doc.filename}\n\n<document>\n${doc.text}\n</document>`,
+          },
+        ],
+      },
+      // No SDK retries: the coordinator falls back to rules instead, which is faster on stage.
+      { timeout: CLAUDE_REQUEST_TIMEOUT_MS, maxRetries: 0, signal: opts.signal },
+    );
+  } catch (err) {
+    throw toExtractionError(err);
+  }
+  if (response.stop_reason === "refusal") throw new ExtractionError("refusal", "Claude declined to extract this document");
+  if (response.stop_reason === "max_tokens") throw new ExtractionError("validation", "Claude's output was cut off at max_tokens");
+  if (!response.parsed_output) throw new ExtractionError("validation", `no structured output (stop reason: ${response.stop_reason})`);
+
   const facts = response.parsed_output.facts.map((f, i) => ({
     id: `${doc.id}#c${i + 1}`,
     docId: doc.id,

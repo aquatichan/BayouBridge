@@ -1,5 +1,6 @@
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult } from "@/lib/types";
 import { extractWithRules } from "./evidence";
+import { fallbackReason, withTimeout } from "./util";
 import {
   buildGraph, buildPlan, deriveNeeds, evidenceScore, findConflicts, matchPrograms, pickFollowUp, resolvePeople,
 } from "./recovery";
@@ -8,7 +9,19 @@ import {
 // depends on. Tasks run once, in dependency order, and every step is logged so
 // the activity feed shows exactly what happened and why.
 
-export type Extractor = (doc: CaseDocument) => Promise<ExtractionResult>;
+export type Extractor = (doc: CaseDocument, opts?: { signal?: AbortSignal }) => Promise<ExtractionResult>;
+
+/** Time limits for the Claude path. The rules engine never waits on any of these. */
+export interface RunLimits {
+  /** Longest one document's Claude call may take before it falls back to rules. */
+  docMs: number;
+  /** Longest all Claude extraction in one run may take. Later documents go straight to rules. */
+  runMs: number;
+  /** After this many fallbacks in one run, stop calling Claude for the remaining documents. */
+  breakerAfter: number;
+}
+
+export const DEFAULT_LIMITS: RunLimits = { docMs: 15_000, runMs: 30_000, breakerAfter: 2 };
 
 interface Task {
   id: string;
@@ -23,9 +36,8 @@ const MANUAL_MINUTES = { extract: 8, people: 5, conflicts: 10, match: 25, gaps: 
 
 export async function runCase(input: {
   caseId: string; householdName: string; address: string; disaster: string; today: string;
-  documents: CaseDocument[]; extractor?: Extractor;
+  documents: CaseDocument[]; extractor?: Extractor; limits?: Partial<RunLimits>;
 }): Promise<CaseState> {
-  const extractor = input.extractor ?? (async (d: CaseDocument) => extractWithRules(d));
   const events: ActivityEvent[] = [];
   const log = (agent: AgentName, action: string, detail: string, refs?: string[], minutesSaved?: number) =>
     events.push({ seq: events.length + 1, agent, action, detail, refs, minutesSaved });
@@ -37,17 +49,54 @@ export async function runCase(input: {
   };
   let aliasNotes: string[] = [];
 
+  // ── Claude extraction with time limits, fallback and a circuit breaker ──
+  // Every document always ends up with an extraction: if Claude is slow,
+  // refuses, returns junk or errors, the rules engine reads that document.
+  const limits = { ...DEFAULT_LIMITS, ...input.limits };
+  const runDeadline = Date.now() + limits.runMs;
+  const breaker = new AbortController(); // aborts in-flight Claude calls once tripped
+  let failures = 0;
+  let settled = 0;
+
+  async function extract(d: CaseDocument): Promise<ExtractionResult> {
+    const claude = input.extractor;
+    if (!claude) return extractWithRules(d);
+    try {
+      const budget = Math.min(limits.docMs, runDeadline - Date.now());
+      if (breaker.signal.aborted) return extractWithRules(d); // covered by the "Claude skipped" event
+      if (budget <= 0) {
+        log("Evidence Agent", "Fell back to rules", `${d.filename}: timeout (the run's ${limits.runMs}ms Claude budget is used up). The rules engine read it instead.`, [d.id]);
+        return extractWithRules(d);
+      }
+      const call = new AbortController();
+      const cancel = () => call.abort();
+      breaker.signal.addEventListener("abort", cancel, { once: true });
+      try {
+        return await withTimeout(claude(d, { signal: call.signal }), budget, "Claude call", call.signal);
+      } catch (err) {
+        call.abort(); // stop the HTTP request too, so no socket or timer is left behind
+        if (breaker.signal.aborted) return extractWithRules(d); // cut short by the breaker
+        failures++;
+        log("Evidence Agent", "Fell back to rules", `${d.filename}: ${fallbackReason(err)} (${(err as Error).message}). The rules engine read it instead.`, [d.id]);
+        const remaining = input.documents.length - settled - 1;
+        if (failures >= limits.breakerAfter && remaining > 0) {
+          log("Evidence Agent", "Claude skipped", `Switching to rules for remaining documents (${remaining} left) after ${failures} Claude failures in this run.`);
+          breaker.abort();
+        }
+        return extractWithRules(d);
+      } finally {
+        breaker.signal.removeEventListener("abort", cancel);
+      }
+    } finally {
+      settled++;
+    }
+  }
+
   const tasks: Task[] = [
     ...input.documents.map<Task>((d) => ({
       id: `extract:${d.id}`, agent: "Evidence Agent", deps: [],
       run: async () => {
-        let ex: ExtractionResult;
-        try {
-          ex = await extractor(d);
-        } catch (err) {
-          log("Evidence Agent", "Fell back to rules", `Claude extraction failed for ${d.filename}: ${(err as Error).message}`, [d.id]);
-          ex = extractWithRules(d);
-        }
+        const ex = await extract(d);
         state.extractions.push(ex);
         const types = ex.evidenceTypes.length ? ex.evidenceTypes.join(", ").replaceAll("_", " ") : "context only";
         log("Evidence Agent", `Read ${d.filename}`, `${ex.facts.length} facts extracted (${ex.method}). Classified as: ${types}.`, [d.id], MANUAL_MINUTES.extract);

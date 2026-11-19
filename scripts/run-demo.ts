@@ -1,7 +1,8 @@
-import { DEMO_TODAY, documents, household } from "../src/data/household";
-import { runCase } from "../src/lib/agents/coordinator";
+import { runDemoCase } from "../src/lib/runDemo";
 
-runCase({ caseId: household.caseId, householdName: household.name, address: household.address, disaster: household.disaster, today: DEMO_TODAY, documents })
+// Same path as POST /api/run: Claude extraction when ANTHROPIC_API_KEY is set, rules otherwise.
+const started = Date.now();
+runDemoCase()
   .then((s) => {
     for (const e of s.events) console.log(`[${e.agent}] ${e.action}: ${e.detail}`);
     console.log("\nPEOPLE", s.people);
@@ -9,4 +10,5 @@ runCase({ caseId: household.caseId, householdName: household.name, address: hous
     for (const m of s.matches) console.log("MATCH", m.name, Math.round(m.readiness * 100) + "%", m.deadline?.date, "missing:", m.blockedBy);
     console.log("FOLLOWUP", s.followUp?.evidence, s.followUp?.why);
     for (const t of s.plan) console.log("TASK", t.owner, t.status, t.title, t.due ?? "");
+    console.error(`\n(run took ${Date.now() - started} ms)`);
   });
