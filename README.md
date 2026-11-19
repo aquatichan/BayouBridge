@@ -12,7 +12,7 @@ npm run dev        # http://localhost:3000
 ```
 
 - `/` is the household app: **Start my case** (consent, your address, upload photos, letters and PDFs, or say what happened in your own words) or **Try a sample case** (the synthetic Reyes family). The agents then work the case in a 3D office: each mascot walks to its desk as its agent works, and the camera follows whoever is busiest. Results fill a side panel (a bottom sheet on phones): next steps with approvals, programs, documents, household and the practice outbox. English and Spanish.
-- `/classic` is the original caseworker dashboard on the shared synthetic demo case.
+- `/details` explains how everything works, in depth, in a newspaper-style page; `/privacy` is the privacy policy in the same format.
 
 To build while `npm run dev` is running, use a separate output folder so the two don't overwrite each other: `NEXT_DIST_DIR=.next-verify npm run build`.
 
@@ -57,14 +57,15 @@ documents ─▶ Evidence Agent ─▶ people · needs · conflicts ─▶ Recov
 | `src/components/office/` | The 3D office (React Three Fiber): mascots from `public/models/`, desks, follow camera, labels |
 | `src/lib/office/director.ts` | Turns agent tasks into mascot walk-and-work jobs and picks who the camera follows. No 3D code, unit-tested |
 | `src/lib/cases.ts` | Session cases: create (real or sample), uploads, running a case with Claude reading the files |
-| `src/components/Dashboard.tsx` | The classic caseworker dashboard (`/classic`) |
+| `src/components/details/` | The newspaper-style pages: `/details` (how it all works) and `/privacy` |
+| `src/components/bits/` | Animated components adapted from React Bits (aurora, blur-in text, count-up, spotlight cards, magnetic buttons) |
 | `src/components/RecoveryGraph.tsx` | The evidence → needs → pathways → deadlines graph |
 
 ## Guardrails
 
 - Recommendations are labeled "possible match" and link to their source. BayouBridge never claims eligibility.
-- Nothing is sent or submitted without approval (the household's own, or a navigator's in the classic view). Sends go to a sandbox outbox only.
-- The sample case and the classic demo are synthetic.
+- Nothing is sent or submitted without the household's approval. Sends go to a practice outbox only.
+- The example case is made up (synthetic).
 - Real uploads ("Start my case") need consent first. They are kept in server memory only, never on disk or in a database, and are deleted after 2 hours or at once with "Delete my case". With an `ANTHROPIC_API_KEY` set, photos and PDFs are sent to Anthropic's Claude API to be read; without one they aren't read at all, and the case says so. Photos are resized in the browser first, which also drops their GPS location. Document text is never logged.
 - Limits: 10 files per case, 8 MB each; JPEG, PNG, WebP, GIF, PDF or plain text.
 

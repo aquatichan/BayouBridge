@@ -6,6 +6,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import type { FollowMode } from "@/components/office/OfficeScene";
 import type { MascotId, OfficeDirector, OfficeSnapshot, StationId } from "@/lib/office/director";
 import type { CaseState } from "@/lib/types";
+import SpotlightCard from "@/components/bits/SpotlightCard";
+import BlurText from "@/components/bits/BlurText";
 import { LANDING, type Lang } from "./strings";
 
 // Section 2. A card slides up over the hero and sticks while you scroll through
@@ -20,8 +22,8 @@ type Step = (typeof STEPS)[number];
 const FOLLOW: Record<Step, FollowMode> = { summary: "overview", plan: "coordinator", drafts: "approval", missing: "recovery", unblocked: "auto" };
 const WALK: Partial<Record<Step, [MascotId, StationId]>> = { plan: ["coordinator", "desk"], drafts: ["approval", "packets"], missing: ["recovery", "phone"] };
 const MASCOT_NAMES: Record<MascotId, { name: string; color: string }> = {
-  coordinator: { name: "Coordinator", color: "#7fc1b4" }, evidence: { name: "Evidence", color: "#9cc68f" },
-  llm: { name: "LLM Extraction", color: "#c4b2ec" }, recovery: { name: "Recovery", color: "#8fb6e0" }, approval: { name: "Approval Gates", color: "#f0a08e" },
+  coordinator: { name: "the Organizer", color: "#7fc1b4" }, evidence: { name: "the Paper Reader", color: "#9cc68f" },
+  llm: { name: "the AI Reader", color: "#c4b2ec" }, recovery: { name: "the Help Finder", color: "#8fb6e0" }, approval: { name: "the Gatekeeper", color: "#f0a08e" },
 };
 
 const noSubscribe = () => () => {};
@@ -114,11 +116,11 @@ export default function Story({ lang, sectionRef }: { lang: Lang; sectionRef: Re
 
   return (
     <section ref={sectionRef} id="how" aria-labelledby="story-title" className="relative z-10" style={{ height: `calc(100svh + ${STEPS.length} * 72svh)` }}>
-      <div className="sticky top-0 h-[100svh] px-2 pb-2 pt-[76px] md:px-3 md:pb-3 md:pt-[92px]">
-        <div className="card-night flex h-full flex-col gap-3 rounded-[28px] p-2.5 text-cream md:grid md:grid-cols-[minmax(0,1fr)_minmax(300px,34%)] md:gap-6 md:rounded-[32px] md:p-5">
+      <div className="sticky top-0 h-[100svh] px-[var(--frame)] pb-[var(--frame)] pt-[calc(var(--frame)+76px)]">
+        <div className="card-night flex h-full flex-col gap-4 rounded-[var(--radius)] p-3 text-cream md:grid md:grid-cols-[minmax(0,1fr)_minmax(300px,34%)] md:gap-6 md:p-6">
 
           {/* The office */}
-          <div className={`relative min-h-0 flex-[1_1_46%] overflow-hidden rounded-[22px] border transition-shadow duration-700 md:h-full ${unblocked ? "border-sun/70 shadow-[0_0_70px_rgb(245_181_68/0.28)]" : "border-white/10"}`}>
+          <div className={`relative min-h-0 flex-[1_1_46%] overflow-hidden rounded-[20px] border transition-shadow duration-700 md:h-full ${unblocked ? "border-sun/70 shadow-[0_0_70px_rgb(245_181_68/0.28)]" : "border-white/10"}`}>
             {director
               ? <Office director={director} hud={false} follow={follow} interactive={false} className="h-full w-full" />
               : <div className="grid h-full place-items-center bg-[#f5f1e8] text-sm text-[#5d6b69]">{t.loading}</div>}
@@ -134,24 +136,30 @@ export default function Story({ lang, sectionRef }: { lang: Lang; sectionRef: Re
           <div className="flex min-h-0 flex-1 flex-col md:h-full">
             <div className="px-1 pt-1 md:pt-2">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="eyebrow text-tide">{t.eyebrow}</p>
-                <p className="eyebrow tabular-nums text-cream/60">{String(index + 1).padStart(2, "0")} / {String(STEPS.length).padStart(2, "0")}</p>
+                <p className="kicker text-tide">{t.kicker}</p>
+                <p className="text-sm tabular-nums text-cream/60">{index + 1} of {STEPS.length}</p>
               </div>
-              <h2 id="story-title" className="headline mt-3 hidden text-[clamp(1.6rem,2.6vw,2.6rem)] md:block">
-                {t.title[0]}<span className="accent text-tide">{t.title[1]}</span>{t.title[2]}
+              <h2 id="story-title" className="mt-2 hidden md:block">
+                <BlurText key={lang} text={t.title.join("").trim()} animateBy="words" trigger="view" delay={60}
+                  accent={[t.title.join("").trim().split(/\s+/).length - 1]} accentClassName="accent text-tide"
+                  className="headline text-[clamp(1.6rem,2.6vw,2.6rem)]" />
               </h2>
-              <p className="mt-2 hidden text-xs text-cream/60 md:block">{t.note}</p>
+              <p className="mt-2 hidden text-sm text-cream/60 md:block">{t.note}</p>
             </div>
 
-            <div ref={column} className="relative mt-3 min-h-0 flex-1 overflow-hidden md:mt-5">
+            <div ref={column} className="relative mt-4 min-h-0 flex-1 overflow-hidden md:mt-6">
               <ol ref={list} className="relative space-y-3 motion-safe:transition-transform motion-safe:duration-700 motion-safe:ease-[cubic-bezier(.2,.8,.2,1)]" style={{ transform: `translateY(${shift}px)` }}>
                 {STEPS.map((key, i) => {
                   const active = i === index;
                   const glow = key === "unblocked" && unblocked;
                   return (
                     <li key={key} ref={(el) => { cards.current[i] = el; }} aria-current={active ? "step" : undefined}
-                      className={`card-night rounded-[24px] p-4 transition duration-500 md:p-5 ${active ? "opacity-100" : "scale-[0.97] opacity-35"} ${glow ? "unlock border-sun/70" : active ? "border-tide/45" : ""}`}>
-                      <Card step={key} t={t} lang={lang} before={before} fema={fema} femaAfter={femaAfter} unblocked={glow} />
+                      className={`origin-center transition duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${active ? "scale-100 opacity-100" : "scale-[0.94] opacity-35"} ${glow ? "unlock" : ""}`}>
+                      <SpotlightCard theme="dark" spotlightColor={glow ? "rgba(245,181,68,0.35)" : "rgba(125,211,252,0.25)"}
+                        className={`rounded-[22px] p-5 ${glow ? "ring-1 ring-sun/70" : active ? "ring-1 ring-tide/40" : ""}`}
+                        style={{ "--spotlight-card-surface": "linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.015)), #0d3156" } as React.CSSProperties}>
+                        <Card step={key} t={t} lang={lang} before={before} fema={fema} femaAfter={femaAfter} unblocked={glow} />
+                      </SpotlightCard>
                     </li>
                   );
                 })}
@@ -169,7 +177,7 @@ type Match = CaseState["matches"][number] | undefined;
 
 function Badge({ children, tone = "tide" }: { children: React.ReactNode; tone?: "tide" | "sun" | "plain" }) {
   const cls = tone === "sun" ? "bg-sun text-night" : tone === "plain" ? "border border-white/15 text-cream/70" : "bg-tide/15 text-tide";
-  return <span className={`eyebrow shrink-0 rounded-full px-2.5 py-1 text-[0.75rem] ${cls}`}>{children}</span>;
+  return <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}>{children}</span>;
 }
 
 function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
@@ -190,7 +198,7 @@ function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
         <>
           {head(<Badge>{t.steps.summary.badge}</Badge>)}
           <p className="line-clamp-2 text-sm leading-relaxed text-cream/60">{t.summary(before.documents.length)}</p>
-          <p className="mt-1 line-clamp-1 text-sm text-cream">{t.summaryStats(before.matches.length, before.evidenceScore)}</p>
+          <p className="mt-1 line-clamp-1 text-sm text-cream">{t.summaryStats(before.matches.length)}</p>
         </>
       );
     case "plan":
@@ -201,7 +209,7 @@ function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
             {before.plan.slice(0, 3).map((task) => (
               <li key={task.id} className="flex items-center justify-between gap-3">
                 <span className="line-clamp-1 text-cream/80">{task.title}</span>
-                <span className="eyebrow shrink-0 text-[0.75rem] text-tide">{t.owners[task.owner] ?? task.owner}</span>
+                <span className="shrink-0 text-xs font-medium text-tide">{t.owners[task.owner] ?? task.owner}</span>
               </li>
             ))}
           </ul>

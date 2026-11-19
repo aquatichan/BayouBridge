@@ -49,13 +49,13 @@ test("uploads: types and sizes are checked, and the sample case takes no uploads
   assert.equal((await sendFiles(s.body.caseId, [new File(["x"], "a.jpg", { type: "image/jpeg" })])).status, 400);
 });
 
-test("without an API key: typed words are read by the rules engine, photos get an honest warning", async () => {
+test("with the photo reader off: typed words are read by the rules engine, photos get an honest warning", async () => {
   const { body } = await newCase({ consent: true, address: "512 Willow Creek Dr, Houston, TX 77016" });
   await sendFiles(body.caseId, [new File([new Uint8Array(10)], "roof.jpg", { type: "image/jpeg" })],
     "My mother, Ruth Okafor, is 78 and uses an oxygen concentrator. We lost all our food.");
   const s = await runSessionCase(body.caseId);
   assert.deepEqual(s.needs.map((n) => n.key).sort(), ["food_loss", "medical_power"]);
-  assert.match(s.warnings.join(" "), /no Claude API key.*roof\.jpg/);
+  assert.match(s.warnings.join(" "), /photo reader is switched off.*roof\.jpg/);
   assert.equal(s.householdName, "Your household");
 });
 

@@ -23,11 +23,11 @@ export interface MascotDef {
 
 /** The five mascots cover all six agent roles (see agentToMascot). */
 export const MASCOTS: MascotDef[] = [
-  { id: "coordinator", name: "Coordinator", role: "Runs the case and builds the plan", file: "/models/coordinator.glb", color: "#0f4c4a", home: "desk" },
-  { id: "evidence", name: "Evidence", role: "Reads documents with the rules engine", file: "/models/evidence.glb", color: "#4f7d4d", home: "reading" },
-  { id: "llm", name: "LLM Extraction", role: "Reads documents with Claude", file: "/models/llm-extraction.glb", color: "#6b4f8a", home: "lab" },
-  { id: "recovery", name: "Recovery", role: "Matches recovery pathways and picks the next question", file: "/models/recovery.glb", color: "#2f5d8a", home: "library" },
-  { id: "approval", name: "Approval Gates", role: "Drafts packets and holds them for your approval", file: "/models/approval-gates.glb", color: "#b8462f", home: "gate" },
+  { id: "coordinator", name: "Organizer", role: "Keeps the case moving and writes the plan", file: "/models/coordinator.glb", color: "#0f4c4a", home: "desk" },
+  { id: "evidence", name: "Paper Reader", role: "Reads your papers and checks the details", file: "/models/evidence.glb", color: "#4f7d4d", home: "reading" },
+  { id: "llm", name: "AI Reader", role: "Reads photos and letters with AI", file: "/models/llm-extraction.glb", color: "#6b4f8a", home: "lab" },
+  { id: "recovery", name: "Help Finder", role: "Finds help you may qualify for and asks what's missing", file: "/models/recovery.glb", color: "#2f5d8a", home: "library" },
+  { id: "approval", name: "Gatekeeper", role: "Prepares drafts and holds them until you say OK", file: "/models/approval-gates.glb", color: "#b8462f", home: "gate" },
 ];
 
 export const mascotDef = (id: MascotId) => MASCOTS.find((m) => m.id === id)!;
@@ -48,17 +48,17 @@ const station = (name: string, deg: number): Station => {
 
 /** The office: desks on a ring around an open floor. The camera looks in from +z. */
 export const STATIONS: Record<StationId, Station> = {
-  desk: station("Coordinator desk", 0),
-  graph: station("Recovery graph wall", 28),
+  desk: station("Planning desk", 0),
+  graph: station("Case map", 28),
   board: station("Case board", 56),
-  library: station("Pathway library", 84),
-  phone: station("Follow-up phone", 112),
-  packets: station("Packet table", 140),
-  gate: station("Approval gate", 168),
-  outbox: station("Sandbox outbox", 196),
-  lab: station("AI reading lab", 236),
+  library: station("Help library", 84),
+  phone: station("Phone", 112),
+  packets: station("Drafts table", 140),
+  gate: station("Your OK gate", 168),
+  outbox: station("Practice outbox", 196),
+  lab: station("AI reading desk", 236),
   reading: station("Reading desk", 268),
-  inbox: station("Mail inbox", 300),
+  inbox: station("Mail tray", 300),
   records: station("Records", 332),
 };
 
@@ -100,28 +100,28 @@ export function routeTask(t: Pick<TaskUpdate, "id" | "agent" | "via">): [MascotI
 /** Activity events mapped to the task they finish (used when no live task updates arrive, e.g. the replay fallback). */
 function routeEvent(e: ActivityEvent): { key: string; mascot: MascotId; station: StationId; label: string } | undefined {
   const a = e.action;
-  if (a === "Started case run") return { key: "start", mascot: "coordinator", station: "inbox", label: "Sorting the new documents" };
+  if (a === "Started case run") return { key: "start", mascot: "coordinator", station: "inbox", label: "Sorting the new papers" };
   if (a.startsWith("Read ")) {
     const claude = e.detail.includes("(claude");
     return { key: `extract:${e.refs?.[0] ?? a}`, mascot: claude ? "llm" : "evidence", station: claude ? "lab" : "reading", label: `Reading ${a.slice(5)}` };
   }
-  if (a === "Fell back to rules") return { key: `extract:${e.refs?.[0] ?? a}`, mascot: "evidence", station: "reading", label: "Reading it with the rules engine" };
-  if (a === "Verified proof of occupancy" || a === "Occupancy not verified") return { key: "occupancy", mascot: "evidence", station: "records", label: "Checking proof of occupancy" };
+  if (a === "Fell back to rules") return { key: `extract:${e.refs?.[0] ?? a}`, mascot: "evidence", station: "reading", label: "Taking over this paper" };
+  if (a === "Verified proof of occupancy" || a === "Occupancy not verified") return { key: "occupancy", mascot: "evidence", station: "records", label: "Checking the bill's address and dates" };
   const table: [string, string, MascotId, StationId, string][] = [
-    ["Resolved people", "people", "evidence", "records", "Resolving people"],
-    ["Built needs list", "needs", "coordinator", "board", "Building the needs list"],
-    ["Checked for conflicts", "conflicts", "evidence", "board", "Checking for conflicts"],
-    ["Matched recovery pathways", "match", "recovery", "library", "Matching recovery pathways"],
+    ["Resolved people", "people", "evidence", "records", "Working out who's who"],
+    ["Built needs list", "needs", "coordinator", "board", "Listing what the family needs"],
+    ["Checked for conflicts", "conflicts", "evidence", "board", "Looking for details that don't match"],
+    ["Matched recovery pathways", "match", "recovery", "library", "Finding help that fits"],
     ["Scored evidence", "gaps", "recovery", "phone", "Picking the next question"],
-    ["Built recovery plan", "plan", "coordinator", "desk", "Building the plan"],
-    ["Applied approval gates", "safety", "approval", "gate", "Applying approval gates"],
-    ["Updated recovery graph", "graph", "coordinator", "graph", "Updating the graph"],
-    ["Approval recorded", "approve", "approval", "gate", "Opening the approval gate"],
-    ["Queued to sandbox outbox", "outbox", "approval", "outbox", "Putting the packet in the sandbox outbox"],
+    ["Built recovery plan", "plan", "coordinator", "desk", "Writing the plan"],
+    ["Applied approval gates", "safety", "approval", "gate", "Holding drafts for your OK"],
+    ["Updated recovery graph", "graph", "coordinator", "graph", "Updating the case map"],
+    ["Approval recorded", "approve", "approval", "gate", "Opening the gate"],
+    ["Queued to sandbox outbox", "outbox", "approval", "outbox", "Putting the draft in the practice outbox"],
   ];
   const hit = table.find(([action]) => a === action);
   if (hit) return { key: hit[1], mascot: hit[2], station: hit[3], label: hit[4] };
-  if (a.startsWith("Drafted packet for ")) return { key: `packet:${a}`, mascot: "approval", station: "packets", label: a.replace("Drafted packet for", "Drafting the packet for") };
+  if (a.startsWith("Drafted packet for ")) return { key: `packet:${a}`, mascot: "approval", station: "packets", label: a.replace("Drafted packet for", "Drafting papers for") };
   return undefined;
 }
 

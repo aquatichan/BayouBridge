@@ -12,7 +12,7 @@ const ICON: Record<CaseDocument["kind"], string> = {
   bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", other: "📎",
 };
 
-type Tab = "next" | "programs" | "docs" | "household" | "outbox" | "activity";
+type Tab = "next" | "programs" | "docs" | "household" | "outbox";
 
 function fmt(iso: string, lang: Lang) {
   return new Date(iso + "T12:00:00Z").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -31,7 +31,7 @@ export default function CasePanel(props: {
   const docs = s?.documents ?? [];
   const tabs: [Tab, string, number?][] = [
     ["next", t.tabs.next], ["programs", t.tabs.programs, s?.matches.length], ["docs", t.tabs.docs, docs.length],
-    ["household", t.tabs.household], ["outbox", t.tabs.outbox, outbox.length], ["activity", t.tabs.activity],
+    ["household", t.tabs.household], ["outbox", t.tabs.outbox, outbox.length],
   ];
 
   return (
@@ -76,20 +76,20 @@ export default function CasePanel(props: {
 
         {tab === "household" && (s && has("Resolved people") ? (
           <>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">{t.people}</h3>
+            <h3 className="text-sm font-semibold text-muted">{t.people}</h3>
             <ul className="space-y-1.5">{s.people.map((p) => (
               <li key={p.name} className="flex items-start justify-between gap-2 text-sm">
                 <div><b>{p.name}</b>{p.aliases.length > 0 && <div className="text-xs text-amber">= {p.aliases.join(", ")}</div>}</div>
                 <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-xs text-muted">{p.role}</span>
               </li>))}
             </ul>
-            {s.needs.length > 0 && <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">{t.needs}</h3>}
+            {s.needs.length > 0 && <h3 className="pt-2 text-sm font-semibold text-muted">{t.needs}</h3>}
             <ul className="space-y-1">{s.needs.map((n) => (
               <li key={n.key} className="flex items-center gap-2 text-sm">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${n.urgency === "critical" ? "bg-clay" : n.urgency === "high" ? "bg-amber" : "bg-moss"}`} />{n.label}
               </li>))}
             </ul>
-            {s.conflicts.length > 0 && <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">{t.conflicts}</h3>}
+            {s.conflicts.length > 0 && <h3 className="pt-2 text-sm font-semibold text-muted">{t.conflicts}</h3>}
             {s.conflicts.map((c) => <p key={c.id} className="rounded-xl bg-amber-soft/60 p-2.5 text-sm">{c.question[lang]}</p>)}
           </>
         ) : <Waiting>{t.waitingResults}</Waiting>)}
@@ -102,13 +102,8 @@ export default function CasePanel(props: {
           </article>
         )) : <Waiting>{t.outboxEmpty}</Waiting>)}
 
-        {tab === "activity" && (
-          <ol className="space-y-2 text-xs">{events.map((e, i) => (
-            <li key={i}><b>{e.agent}</b> · {e.action}<p className="text-muted">{e.detail}</p></li>
-          ))}</ol>
-        )}
 
-        {running && tab !== "next" && tab !== "activity" && <p className="text-center text-[11px] text-muted">{t.working}…</p>}
+        {running && tab !== "next" && <p className="text-center text-[11px] text-muted">{t.working}…</p>}
       </div>
     </section>
   );
@@ -143,7 +138,7 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
 
       {s?.followUp && has("Scored evidence") && (
         <div className="rounded-2xl border border-bayou/30 bg-panel p-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-bayou">{t.needFromYou}</h3>
+          <h3 className="text-sm font-semibold text-bayou">{t.needFromYou}</h3>
           <p className="mt-1 text-sm leading-relaxed text-ink">{s.followUp[lang]}</p>
           <p className="mt-1 text-[11px] text-muted">{s.followUp.why}</p>
           <div className="mt-2">
@@ -156,7 +151,7 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
 
       {s && has("Built recovery plan") && (
         <div>
-          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">{t.plan}</h3>
+          <h3 className="mb-1.5 text-sm font-semibold text-muted">{t.plan}</h3>
           {approveError && <p role="alert" className="mb-2 rounded-xl bg-clay-soft p-2 text-xs text-clay">{approveError}</p>}
           <ol className="space-y-2">{s.plan.map((task) => (
             <li key={task.id} className="rounded-2xl border border-line p-3">
@@ -196,8 +191,8 @@ function Doc({ d, s, lang, read, working }: { d: CaseDocument; s: CaseState | nu
       </button>
       {open && (
         <div className="space-y-2 border-t border-line p-2.5 text-xs">
-          {d.text.trim() ? <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-bg p-2 font-mono text-[11px] leading-relaxed">{d.text}</pre> : <p className="text-muted">{t.notRead}</p>}
-          {facts.map((f) => <div key={f.id} className="flex justify-between gap-2"><span><b>{f.label}</b>: {f.value}</span><span className="text-muted">{Math.round(f.confidence * 100)}%</span></div>)}
+          {d.text.trim() ? <p className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-bg p-2.5 text-[12px] leading-relaxed">{d.text}</p> : <p className="text-muted">{t.notRead}</p>}
+          {facts.map((f) => <div key={f.id} className="flex justify-between gap-2"><span><b>{f.label}</b>: {f.value}</span></div>)}
         </div>
       )}
     </li>

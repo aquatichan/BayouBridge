@@ -23,7 +23,7 @@ test("a failing step with no safe default skips its dependents, and the run stil
   assert.deepEqual(s.matches, []);
   assert.deepEqual(s.plan, []);
   const skipped = s.events.filter((e) => e.action === "Step skipped").map((e) => e.detail.split(":")[0]);
-  assert.deepEqual(skipped.sort(), ["Applying approval gates", "Building the plan", "Drafting packets", "Scoring evidence", "Updating the graph"].sort());
+  assert.deepEqual(skipped.sort(), ["Holding drafts for your OK", "Writing the plan", "Preparing drafts", "Picking the next question", "Updating the case map"].sort());
   assert(s.needs.length > 0, "work done before the failure is kept");
   assert.equal(s.events.at(-1)?.action, "Run complete");
 });

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Office from "@/components/office/Office";
+import LogoMark from "@/components/site/LogoMark";
 import { shrinkImage } from "@/lib/client/files";
 import { RunError, streamRun } from "@/lib/client/stream";
-import { extractionLabel } from "@/lib/labels";
 import { OfficeDirector } from "@/lib/office/director";
 import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import CasePanel from "./CasePanel";
@@ -61,7 +61,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const [state, setState] = useState<CaseState | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [tasks, setTasks] = useState<Record<string, TaskUpdate>>({});
-  const [mode, setMode] = useState<ExtractionSummary | null>(null);
+  const [, setMode] = useState<ExtractionSummary | null>(null);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,7 +70,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const [approving, setApproving] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [claudeOn, setClaudeOn] = useState<boolean | null>(null);
-  const [cheer, setCheer] = useState<string | undefined>();
+  const [, setCheer] = useState<string | undefined>();
   const [menu, setMenu] = useState(false);
   const director = useMemo(() => new OfficeDirector(), []);
   const eventsRef = useRef<ActivityEvent[]>([]);
@@ -241,18 +241,15 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
       {/* Top bar */}
       <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-2 px-3 py-2 md:px-4 md:py-3">
         <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/70 bg-panel/90 py-1 pl-1 pr-3 shadow-sm backdrop-blur">
-          <svg viewBox="0 0 32 32" className="h-7 w-7 shrink-0" aria-hidden>
-            <rect width="32" height="32" rx="16" fill="#0f4c4a" />
-            <path d="M5 20 Q16 6 27 20" stroke="#f5f1e8" strokeWidth="2.2" fill="none" />
-            <path d="M3 24 q3 -2 6 0 t6 0 t6 0 t6 0 t3 0" stroke="#7fc1b4" strokeWidth="1.8" fill="none" />
-          </svg>
+          <Link href="/" aria-label="BayouBridge home" className="shrink-0">
+            <LogoMark size={28} className="shrink-0" />
+          </Link>
           <div className="min-w-0 leading-tight">
             <div className="text-sm font-bold text-bayou">BayouBridge</div>
             {household && inOffice && <div className="hidden truncate text-[11px] text-muted sm:block">{household.name} · {household.address}</div>}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-xs">
-          {inOffice && mode && <span className="hidden rounded-full border border-white/70 bg-panel/90 px-2.5 py-1 text-muted shadow-sm backdrop-blur sm:inline">{t.extraction}: {extractionLabel(mode)}</span>}
           {inOffice && minutes > 0 && <span className="hidden rounded-full bg-bayou-soft px-2.5 py-1 font-semibold text-bayou shadow-sm sm:inline">⏱ {t.minutes(minutes)}</span>}
           {sample && inOffice && <span className="whitespace-nowrap rounded-full bg-amber-soft px-2.5 py-1 font-medium text-amber shadow-sm" title={t.sampleNote}>{wide ? t.sampleNote.split(".")[0] : t.sampleShort}</span>}
           <div className="flex overflow-hidden rounded-full border border-white/70 bg-panel/90 shadow-sm backdrop-blur">
@@ -266,7 +263,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
               {menu && (
                 <div className="absolute right-0 top-9 w-48 overflow-hidden rounded-xl border border-line bg-panel text-sm shadow-lg">
                   <button onClick={forget} className="block w-full px-3 py-2 text-left hover:bg-bg">{sample ? t.menu.restart : t.menu.delete}</button>
-                  <Link href="/classic" className="block px-3 py-2 hover:bg-bg">{t.menu.classic}</Link>
+                  <Link href="/details" className="block px-3 py-2 hover:bg-bg">{t.menu.details}</Link>
                 </div>
               )}
             </div>

@@ -6,7 +6,7 @@ import { getCase } from "@/lib/store";
 import type { CaseState } from "@/lib/types";
 
 // The body accepted by POST /api/run and /api/run/stream:
-//   {}                                   the shared synthetic demo case (classic dashboard)
+//   {}                                   the shared synthetic demo case (scripts)
 //   { addDocumentIds: ["doc-..."] }      the demo case plus allow-listed follow-up documents
 //   { caseId }                           a session case from the consumer flow
 //   { caseId, incremental: true }        the same, reusing documents read in its last run

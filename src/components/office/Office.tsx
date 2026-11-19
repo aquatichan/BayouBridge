@@ -112,11 +112,11 @@ export default function Office({
               <>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: def.color }} />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{mode === "auto" ? "Following the busiest agent" : "Following"}</span>
+                  <span className="text-[11px] text-muted">{mode === "auto" ? "Watching the busiest helper" : "Watching"}</span>
                 </div>
                 <div className="mt-0.5 text-sm font-bold text-ink">{def.name}</div>
                 <div className="text-muted">
-                  {f.phase === "walking" && f.station ? <>Walking to the <b className="text-ink">{f.station}</b>{f.label ? ` · ${f.label}` : ""}</>
+                  {f.phase === "walking" && f.station ? <>Heading to the <b className="text-ink">{f.station}</b>{f.label ? ` · ${f.label}` : ""}</>
                     : f.phase === "working" ? <>{f.label} <span className="text-muted">at the {f.station}</span></>
                     : def.role}
                 </div>
@@ -124,8 +124,8 @@ export default function Office({
               </>
             ) : (
               <>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">The office</div>
-                <div className="text-ink">{snap.mascots.some((m) => m.phase !== "idle") ? "Agents at work. Pick one to follow." : "Everyone is at their desk."}</div>
+                <div className="text-[11px] text-muted">The office</div>
+                <div className="text-ink">{snap.mascots.some((m) => m.phase !== "idle") ? "Your helpers are at work. Tap one to watch." : "Everyone is at their desk."}</div>
               </>
             )}
           </div>

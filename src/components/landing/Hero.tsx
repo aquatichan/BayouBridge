@@ -3,89 +3,100 @@
 import Image from "next/image";
 import { m, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import BlurText from "@/components/bits/BlurText";
+import CountUp from "@/components/bits/CountUp";
+import Magnet from "@/components/bits/Magnet";
 import { LANDING, type Lang } from "./strings";
 
-// Section 1. Full-screen video under a navy gradient. As the story card
-// slides up over it, the hero shrinks a little and dims (stacked cards).
+// Section 1. Full-screen video under a navy gradient, the headline on the
+// left, three numbers along the bottom. It stays put while the story card
+// slides up over it; as that happens it eases back, rounds its corners and dims.
 
 export default function Hero({ lang, next }: { lang: Lang; next: RefObject<HTMLElement | null> }) {
   const t = LANDING[lang].hero;
   const reduced = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: next, offset: ["start end", "start start"] });
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.92]);
-  const radius = useTransform(scrollYProgress, [0, 1], [0, 32]);
-  const dim = useTransform(scrollYProgress, [0, 1], [0, 0.6]);
+  const words = t.title.join("").trim().split(/\s+/);
+  const accentAt = words.findIndex((w) => w.replace(/[.,]/g, "") === t.title[1]);
 
-  // The poster is the first big paint; the video is attached once the page has settled.
+  // The poster paints first; the video takes over once the page has settled.
   const video = useRef<HTMLVideoElement>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (reduced) return;
     const w = window as Window & { requestIdleCallback?: (cb: () => void) => number; cancelIdleCallback?: (id: number) => void };
-    if (w.requestIdleCallback) {
-      const id = w.requestIdleCallback(() => setSrc("/hero.mp4"));
-      return () => w.cancelIdleCallback?.(id);
-    }
-    const id = window.setTimeout(() => setSrc("/hero.mp4"), 400);
+    const go = () => setSrc("/hero.mp4");
+    if (w.requestIdleCallback) { const id = w.requestIdleCallback(go); return () => w.cancelIdleCallback?.(id); }
+    const id = window.setTimeout(go, 400);
     return () => window.clearTimeout(id);
   }, [reduced]);
 
-  // No need to decode video frames nobody can see.
+  // Stacked cards: as the story slides over, the hero shrinks a touch, rounds and dims.
+  const { scrollYProgress } = useScroll({ target: next, offset: ["start end", "start start"] });
+  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.93]);
+  const radius = useTransform(scrollYProgress, [0, 1], [0, 36]);
+  const dim = useTransform(scrollYProgress, [0, 1], [0, 0.65]);
   useMotionValueEvent(scrollYProgress, "change", (v) => {
     const el = video.current;
-    if (!el || !src) return;
+    if (!el) return;
     if (v > 0.98 && !el.paused) el.pause();
     else if (v <= 0.98 && el.paused) el.play().catch(() => {});
   });
 
   return (
-    <section id="top" className="sticky top-0 h-[100svh] overflow-hidden" aria-labelledby="hero-title">
+    <section id="top" aria-labelledby="hero-title" className="sticky top-0 h-[100svh] overflow-hidden">
       <m.div style={{ scale, borderRadius: radius }} className="absolute inset-0 origin-[50%_30%] overflow-hidden bg-night">
-        <Image src="/hero-poster.jpg" alt="" fill priority sizes="100vw" className="object-cover" />
-        {src && !reduced && (
-          <video ref={video} src={src} muted autoPlay loop playsInline preload="auto" aria-label={t.videoLabel}
-            onPlaying={() => setPlaying(true)}
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${playing ? "opacity-100" : "opacity-0"}`} />
-        )}
-        {/* Navy at 75% on the left, fading to nothing on the right, plus a little at the bottom for the stats. */}
-        <div className="absolute inset-0 bg-gradient-to-r from-night/75 via-night/45 to-night/0" />
-        <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-night/85 to-night/0" />
-        <m.div style={{ opacity: dim }} className="absolute inset-0 bg-night" />
+        {/* Scaled from the top-left so the clip's corner watermark stays out of frame. */}
+        <div className="absolute inset-0 origin-top-left scale-[1.12]">
+          <Image src="/hero-poster.jpg" alt="" fill priority sizes="100vw" className="object-cover" />
+          {src && (
+            <video ref={video} src={src} muted autoPlay loop playsInline preload="auto" aria-label={t.videoLabel}
+              onPlaying={() => setPlaying(true)}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${playing ? "opacity-100" : "opacity-0"}`} />
+          )}
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-r from-night/80 via-night/45 to-night/0" />
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-night/90 via-night/40 to-night/0" />
+        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-night/60 to-night/0" />
+        <m.div aria-hidden style={{ opacity: dim }} className="absolute inset-0 bg-night" />
 
-        <div className="relative flex h-full flex-col px-6 pb-6 pt-28 text-cream md:px-14 md:pb-10 md:pt-36">
-          <div className="max-w-[min(680px,100%)]">
-            <p className="eyebrow text-tide">{t.eyebrow}</p>
-            <h1 id="hero-title" className="headline mt-5 text-[clamp(2.4rem,min(5.6vw,9vh),5.4rem)]">
-              {t.title[0]}<span className="accent text-tide">{t.title[1]}</span>{t.title[2]}
+        <div className="relative flex h-full flex-col px-[calc(var(--frame)+var(--gutter))] pb-[calc(var(--frame)+28px)] pt-[calc(var(--frame)+120px)] text-cream md:pt-[calc(var(--frame)+150px)]">
+          <div className="max-w-[min(760px,100%)]">
+            <p className="kicker text-tide">{t.kicker}</p>
+            <h1 id="hero-title" className="mt-5">
+              <BlurText key={lang} text={words.join(" ")} animateBy="words" direction="bottom" delay={70} trigger="load"
+                accent={accentAt >= 0 ? [accentAt] : undefined} accentClassName="accent text-tide"
+                className="headline text-[clamp(2.6rem,min(6vw,10vh),5.75rem)]" />
             </h1>
-            <p className="mt-5 max-w-[520px] text-base leading-relaxed text-cream/60 md:text-lg">{t.sub}</p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a href="/case?start=1" className="rounded-full bg-sun px-6 py-3 text-sm font-semibold text-night shadow-[0_8px_30px_rgb(245_181_68/0.25)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun">
-                {t.start}
-              </a>
-              <a href="#how" className="rounded-full border border-cream/30 px-6 py-3 text-sm font-semibold text-cream transition hover:border-tide hover:text-tide">
-                {t.how}
-              </a>
+            <p className="mt-6 max-w-[540px] text-base leading-relaxed text-cream/70 md:text-lg">{t.sub}</p>
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <Magnet padding={40} magnetStrength={3} disabled={!!reduced}>
+                <a href="/case?start=1" className="inline-block rounded-full bg-sun px-7 py-3.5 text-sm font-semibold text-night shadow-[0_10px_34px_rgb(245_181_68/0.3)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun">
+                  {t.start}
+                </a>
+              </Magnet>
+              <a href="#how" className="rounded-full border border-cream/30 px-7 py-3.5 text-sm font-semibold text-cream backdrop-blur-sm transition hover:border-tide hover:text-tide">{t.how}</a>
             </div>
           </div>
 
-          <div className="mt-auto flex items-end gap-6">
-            <dl className="grid flex-1 grid-cols-3 gap-4 border-t border-white/10 pt-5 md:gap-10">
-              {t.stats.map((s) => (
-                <div key={s.label}>
+          <div className="mt-auto flex items-end gap-8">
+            <dl className="grid flex-1 grid-cols-3 divide-x divide-white/10 border-t border-white/15">
+              {t.stats.map((s, i) => (
+                <div key={s.label} className={`pt-5 ${i === 0 ? "pr-4" : "px-4 md:px-8"}`}>
                   <dt className="sr-only">{s.label}</dt>
                   <dd>
-                    <span className="headline text-[clamp(1.8rem,4vw,3.4rem)] tabular-nums">{s.n}</span>
-                    {s.unit && <span className="ml-1 font-serif text-[clamp(1rem,1.6vw,1.5rem)] italic text-cream/80">{s.unit}</span>}
-                    <span className="eyebrow mt-2 block text-[0.8rem] leading-snug text-cream/60">{s.label}</span>
+                    <span className="headline text-[clamp(1.9rem,4.2vw,3.6rem)] tabular-nums">
+                      {"prefix" in s && s.prefix}<CountUp to={s.to} duration={1.8} delay={0.4} trigger="load" />
+                    </span>
+                    <span className="accent ml-1.5 text-[clamp(1rem,1.7vw,1.6rem)] text-cream/80">{s.suffix}</span>
+                    <span className="mt-2 block text-sm leading-snug text-cream/60">{s.label}</span>
                   </dd>
                 </div>
               ))}
             </dl>
-            <a href="#how" className="hidden flex-col items-center gap-2 pb-1 text-cream/60 hover:text-tide md:flex" aria-label={t.how}>
-              <span className="eyebrow text-[0.75rem]">{t.scroll}</span>
-              <span className="relative h-10 w-px overflow-hidden bg-white/15"><span className="scroll-cue absolute inset-x-0 top-0 h-1/2 bg-tide" /></span>
+            <a href="#how" aria-label={t.how} className="hidden flex-col items-center gap-2 pb-1 text-cream/60 transition hover:text-tide md:flex">
+              <span className="text-xs tracking-wide">{t.hint}</span>
+              <span className="relative h-12 w-px overflow-hidden bg-white/15"><span className="scroll-cue absolute inset-x-0 top-0 h-1/2 bg-tide" /></span>
             </a>
           </div>
         </div>

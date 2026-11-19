@@ -131,7 +131,7 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     const names = unread.map((d) => d.filename).join(", ");
     state.warnings.push(claudeConfigured()
       ? `We couldn't read ${names}. Try a clearer photo, or type what it says in "your own words".`
-      : `Photos and PDFs need Claude to read them, and this server has no Claude API key. ${names} ${unread.length === 1 ? "was" : "were"} not read. You can type what ${unread.length === 1 ? "it says" : "they say"} in "your own words" instead.`);
+      : `Our photo reader is switched off right now, so ${names} ${unread.length === 1 ? "wasn't" : "weren't"} read. You can type what ${unread.length === 1 ? "it says" : "they say"} in "your own words" instead.`);
   }
   return saveRun(state);
 }

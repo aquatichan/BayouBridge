@@ -42,10 +42,11 @@ const SLICES: Record<string, (keyof CaseState)[]> = {
   gaps: ["evidenceScore", "followUp"], plan: ["plan"], packet: ["packets"], safety: ["plan"], graph: ["graph"],
 };
 
+/** Plain-language names for each step, shown live while it runs. */
 const LABELS: Record<string, string> = {
-  occupancy: "Checking proof of occupancy", people: "Resolving people", needs: "Building needs list",
-  conflicts: "Checking for conflicts", match: "Matching recovery pathways", gaps: "Scoring evidence",
-  plan: "Building the plan", packet: "Drafting packets", safety: "Applying approval gates", graph: "Updating the graph",
+  occupancy: "Checking the bill's address and dates", people: "Working out who's who", needs: "Listing what the family needs",
+  conflicts: "Looking for details that don't match", match: "Finding help that fits", gaps: "Picking the next question",
+  plan: "Writing the plan", packet: "Preparing drafts", safety: "Holding drafts for your OK", graph: "Updating the case map",
 };
 
 /** Optional live hooks. Callers that pass none get exactly the old behavior. */

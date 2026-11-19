@@ -6,7 +6,7 @@ import type { ActivityEvent, CaseDocument, CaseState, OutboxItem, PlanTask } fro
 // to disk.
 //
 // Two kinds of case live here:
-// - the shared demo case (BB-0417, synthetic, used by /classic and scripts), and
+// - the shared demo case (BB-0417, synthetic, used by scripts and the golden test), and
 // - session cases from the consumer flow ("Start my case" or "Try a sample
 //   case"), each under an unguessable random id. A session case can hold a
 //   person's real uploads, so it expires CASE_TTL_MS after its last use and
@@ -128,7 +128,7 @@ export type ApproveResult =
 export function approveTask(caseId: string, taskId: string): ApproveResult {
   const rec = cases.get(caseId);
   if (!rec?.state) return { ok: false, status: 404, error: "Case not found. Run the agents first." };
-  // In the consumer flow the household approves for themselves; the classic demo is a navigator.
+  // In the consumer flow the household approves for themselves; the shared demo case (scripts) is a navigator.
   const by = rec.profile ? "You" : "Navigator (demo)";
   const task = rec.state.plan.find((t) => t.id === taskId);
   if (!task) return { ok: false, status: 404, error: "Unknown task. The plan may have changed; run the agents again." };

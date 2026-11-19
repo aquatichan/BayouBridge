@@ -41,7 +41,7 @@ export function sameName(a: string, b: string): boolean {
 /** What household-specific wording needs: the street, and who depends on powered medical equipment. */
 export interface CaseContext {
   street: string;
-  /** Who approves outbound packets: a navigator (classic view) or the household itself (consumer app). */
+  /** Who approves outbound packets: a navigator (the demo script) or the household itself (the app). */
   approver?: "navigator" | "household";
   medical?: { first?: string; relation?: string; equipment: string };
 }

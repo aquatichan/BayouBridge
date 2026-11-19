@@ -24,7 +24,7 @@ export function Welcome({ lang, onStart, onSample, busy }: { lang: Lang; onStart
   const t = STRINGS[lang];
   return (
     <Card>
-      <p className="text-xs font-semibold uppercase tracking-wider text-bayou">{t.tagline}</p>
+      <p className="font-serif text-lg italic text-bayou">{t.tagline}</p>
       <h1 className="mt-1 text-2xl font-bold leading-tight text-ink md:text-3xl">{t.welcomeTitle}</h1>
       <p className="mt-3 text-sm leading-relaxed text-muted">{t.welcomeBody}</p>
       <div className="mt-5 flex flex-wrap gap-2">
