@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ActivityEvent, CaseDocument, CaseState, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
+import type { ActivityEvent, AgentName, CaseDocument, CaseState, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { FilePicker } from "./Onboarding";
 import { STRINGS, type Lang } from "./i18n";
 
@@ -10,6 +10,16 @@ import { STRINGS, type Lang } from "./i18n";
 const ICON: Record<CaseDocument["kind"], string> = {
   photo: "📷", estimate: "🧾", fema_letter: "✉️", insurance_email: "📧", voice_note: "🗣️", utility_bill: "💡",
   bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", other: "📎",
+};
+
+// Same colors as the agents' mascots in the office, so the log reads at a glance.
+const AGENT_COLOR: Record<AgentName, string> = {
+  Coordinator: "#0f4c4a",
+  "Evidence Agent": "#4f7d4d",
+  "Recovery-Match Agent": "#2f5d8a",
+  "Packet Agent": "#6b4f8a",
+  "Follow-up Agent": "#b9791a",
+  "Safety Agent": "#b8462f",
 };
 
 type Tab = "next" | "programs" | "docs" | "household" | "outbox" | "activity";
@@ -21,6 +31,8 @@ function fmt(iso: string, lang: Lang) {
 export default function CasePanel(props: {
   s: CaseState | null; events: ActivityEvent[]; tasks: Record<string, TaskUpdate>; running: boolean; lang: Lang;
   outbox: OutboxItem[]; sample: boolean; billPending: boolean; approving: string | null; approveError: string | null;
+  /** Name of a pathway a follow-up document just unblocked. */
+  cheer?: string; onDismissCheer: () => void; minutes: number;
   onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void; onBill: () => void;
 }) {
   const { s, events, running, lang, outbox } = props;
@@ -36,17 +48,18 @@ export default function CasePanel(props: {
 
   return (
     <section className="flex min-h-0 flex-col rounded-3xl border border-white/70 bg-panel/95 shadow-xl backdrop-blur">
-      <nav className="flex gap-1 overflow-x-auto border-b border-line p-2" aria-label="Case">
+      <nav className="flex gap-0.5 overflow-x-auto border-b border-line p-2 [scrollbar-width:none]" aria-label="Case">
         {tabs.map(([id, label, n]) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${tab === id ? "bg-ink text-white" : "text-muted hover:bg-bg"}`}>
-            {label}{n ? <span className="ml-1 opacity-70">{n}</span> : null}
+          <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined}
+            className={`shrink-0 rounded-full px-2.5 py-1.5 text-xs font-semibold transition ${tab === id ? "bg-ink text-white" : "text-muted hover:bg-bg"}`}>
+            {label}
+            {n ? <span className={`ml-1 ${id === "outbox" && tab !== id ? "rounded-full bg-moss px-1.5 text-white" : "opacity-70"}`}>{n}</span> : null}
           </button>
         ))}
       </nav>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {tab === "next" && <NextSteps {...props} has={has} read={read} />}
+        {tab === "next" && <NextSteps {...props} has={has} read={read} onShowOutbox={() => setTab("outbox")} />}
 
         {tab === "programs" && (s && has("Matched recovery pathways") ? s.matches.map((m) => (
           <article key={m.programId} className="rounded-2xl border border-line p-3">
@@ -95,16 +108,25 @@ export default function CasePanel(props: {
         ) : <Waiting>{t.waitingResults}</Waiting>)}
 
         {tab === "outbox" && (outbox.length ? outbox.map((o) => (
-          <article key={o.id} className="rounded-2xl border border-line p-3 text-xs">
-            <b className="text-sm">{o.packet.title}</b>
-            <div className="text-muted">{t.to} {o.packet.to} · {o.packet.attachments.map((a) => a.title).join(", ")}</div>
+          <article key={o.id} className="fade-up rounded-2xl border border-line p-3 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <b className="text-sm">{o.packet.title}</b>
+              <span className="shrink-0 rounded-full bg-moss px-2 py-0.5 text-[11px] font-medium text-white">✓ {t.practiceSend}</span>
+            </div>
+            <div className="mt-0.5 text-muted">{t.to} {o.packet.to} · {o.packet.attachments.map((a) => a.title).join(", ")}</div>
             <p className="mt-1.5 rounded-lg bg-bg p-2 leading-relaxed">{o.packet.bilingualCover[lang]}</p>
           </article>
         )) : <Waiting>{t.outboxEmpty}</Waiting>)}
 
         {tab === "activity" && (
-          <ol className="space-y-2 text-xs">{events.map((e, i) => (
-            <li key={i}><b>{e.agent}</b> · {e.action}<p className="text-muted">{e.detail}</p></li>
+          <ol className="space-y-2.5 text-xs">{events.map((e, i) => (
+            <li key={i} className="flex gap-2">
+              <span aria-hidden className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: AGENT_COLOR[e.agent] ?? "#5d6b69" }} />
+              <div className="min-w-0">
+                <div><b style={{ color: AGENT_COLOR[e.agent] }}>{e.agent}</b> · <span className="font-medium text-ink">{e.action}</span></div>
+                <p className="text-muted">{e.detail}</p>
+              </div>
+            </li>
           ))}</ol>
         )}
 
@@ -118,12 +140,37 @@ function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-function NextSteps({ s, events, running, lang, sample, billPending, approving, approveError, onApprove, onUpload, onBill, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
+function NextSteps({ s, events, running, lang, sample, billPending, approving, approveError, cheer, onDismissCheer, minutes, onApprove, onUpload, onBill, has, read, onShowOutbox }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string>; onShowOutbox: () => void }) {
   const t = STRINGS[lang];
   const total = s?.documents.length ?? 0;
   const latest = events.at(-1);
+  const planned = !!s && has("Built recovery plan");
+  const drafts = s?.plan.filter((x) => x.status === "needs_approval" && !x.approved).length ?? 0;
+  const waiting = s?.plan.filter((x) => x.status === "blocked").length ?? 0;
   return (
     <>
+      {cheer && !running && (
+        <div role="status" className="fade-up flex items-start gap-3 rounded-2xl bg-moss p-3 text-white shadow-sm">
+          <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/20 text-base">🔓</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-white/80">{t.unblocked}</div>
+            <p className="text-sm font-semibold leading-snug">{t.unblockedBody(cheer)}</p>
+          </div>
+          <button onClick={onDismissCheer} className="shrink-0 text-white/70 hover:text-white" aria-label="Dismiss">✕</button>
+        </div>
+      )}
+
+      {planned && !running && s && (
+        <div className="fade-up rounded-2xl border border-line bg-bg/60 p-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">{t.summaryTitle}</h3>
+          {minutes > 0 && <p className="mt-1 text-base font-bold text-bayou">{t.summaryMinutes(minutes)}</p>}
+          <ul className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-medium">
+            <li className="rounded-full bg-bayou-soft px-2 py-0.5 text-bayou">{t.summaryPrograms(s.matches.length)}</li>
+            {drafts > 0 && <li className="rounded-full bg-panel px-2 py-0.5 text-ink ring-1 ring-line">{t.summaryDrafts(drafts)}</li>}
+            {waiting > 0 && <li className="rounded-full bg-clay-soft px-2 py-0.5 text-clay">{t.summaryBlocked(waiting)}</li>}
+          </ul>
+        </div>
+      )}
       {running && (
         <div className="rounded-2xl bg-bayou-soft p-3 text-sm">
           <div className="flex items-center gap-2 font-semibold text-bayou">
@@ -154,7 +201,7 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
         </div>
       )}
 
-      {s && has("Built recovery plan") && (
+      {planned && s && (
         <div>
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">{t.plan}</h3>
           {approveError && <p role="alert" className="mb-2 rounded-xl bg-clay-soft p-2 text-xs text-clay">{approveError}</p>}
@@ -165,11 +212,19 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
                 {task.status === "blocked" && <span className="shrink-0 rounded-full bg-clay-soft px-2 py-0.5 text-[11px] text-clay">{t.blocked}</span>}
                 {task.status === "ready" && <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] text-bayou">{t.ready}</span>}
               </div>
-              <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{task.detail}</p>
+              <p className="mt-0.5 text-xs text-muted">
+                <span className="font-medium text-ink/80">{t.owner[task.owner]}</span>
+                {task.due ? <> · <span className="text-amber">{fmt(task.due, lang)}</span></> : null} · {task.detail}
+              </p>
               {task.status === "needs_approval" && (task.approved
-                ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-white">{t.approved}</span>
+                ? <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-white">✓ {t.approved}</span>
+                    <button onClick={onShowOutbox} className="text-[11px] font-semibold text-bayou underline">{t.seeOutbox} →</button>
+                  </div>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}
-                  className="mt-2 rounded-full border border-bayou px-3 py-1 text-xs font-semibold text-bayou hover:bg-bayou hover:text-white disabled:opacity-50">{t.approve}</button>)}
+                  className="mt-2 rounded-full bg-bayou px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-[#0b3a39] disabled:opacity-50">
+                  {approving === task.id ? t.approving : t.approve}
+                </button>)}
             </li>
           ))}</ol>
         </div>

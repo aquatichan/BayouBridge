@@ -101,9 +101,9 @@ export default function CaseApp() {
     const body = { caseId: id, incremental: opts.incremental, addDocumentIds: opts.addDocumentIds };
     const finish = (final: CaseState, extraction: ExtractionSummary) => {
       setState(final); setMode(extraction); setEvents([...before, ...final.events]);
-      // A follow-up document just unblocked a pathway: Capi celebrates.
+      // A follow-up document just unblocked a pathway: the panel celebrates it.
       const unblocked = final.matches.find((m) => blockedBefore.has(m.programId) && !m.blocked);
-      if (opts.incremental && unblocked) setCheer(`${unblocked.name}: 100%`);
+      if (opts.incremental && unblocked) setCheer(unblocked.name);
     };
     try {
       const streamed = await streamRun(body, {
@@ -217,6 +217,7 @@ export default function CaseApp() {
       {/* The office. Full screen on desktop; the top half of the screen on phones. */}
       <Office
         director={director}
+        lang={lang}
         hud={inOffice}
         className="relative h-[56vh] md:fixed md:inset-0 md:h-auto"
         followClass="left-3 top-16 md:left-4 md:top-20"
@@ -277,6 +278,7 @@ export default function CaseApp() {
           <CasePanel
             s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample}
             billPending={billPending} approving={approving} approveError={approveError}
+            cheer={cheer} onDismissCheer={() => setCheer(undefined)} minutes={minutes}
             onApprove={approve} onUpload={followUp}
             onBill={() => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: ["doc-electric-bill"] })}
           />

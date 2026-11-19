@@ -342,6 +342,11 @@ export default function Dashboard({ household, documents, followUps, today }: {
               ))}
             </div>
           }>
+            {cheer && (
+              <p role="status" className="fade-up mb-2 flex items-center gap-2 rounded-xl bg-moss p-3 text-sm font-semibold text-white">
+                <span aria-hidden>🔓</span>{cheer}
+              </p>
+            )}
             {s?.followUp && has("Scored evidence") ? (
               <div className="fade-up space-y-2">
                 <p className="rounded-xl bg-bayou-soft p-3 text-sm leading-relaxed text-ink">“{s.followUp[lang]}”</p>

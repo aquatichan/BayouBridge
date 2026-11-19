@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { MASCOTS, STATIONS, mascotDef, type MascotId, type OfficeDirector, type StationId } from "@/lib/office/director";
+import { STRINGS, type Lang } from "@/components/app/i18n";
 import type { FollowMode, ViewControl } from "./OfficeScene";
 
 // The office view: the 3D scene plus a HUD saying who the camera follows and
@@ -10,27 +11,28 @@ import type { FollowMode, ViewControl } from "./OfficeScene";
 
 const OfficeScene = dynamic(() => import("./OfficeScene"), {
   ssr: false,
-  loading: () => <div className="grid h-full place-items-center text-sm text-muted">Opening the office…</div>,
+  loading: () => <div className="grid h-full place-items-center text-sm text-muted">{STRINGS.en.office.loading}</div>,
 });
 
-class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+class SceneBoundary extends Component<{ children: ReactNode; message: string }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   render() {
-    if (this.state.failed) return <div className="grid h-full place-items-center p-4 text-center text-sm text-muted">The 3D office couldn&apos;t load on this device. Everything else still works.</div>;
+    if (this.state.failed) return <div className="grid h-full place-items-center p-4 text-center text-sm text-muted">{this.props.message}</div>;
     return this.props.children;
   }
 }
 
 export default function Office({
-  director, className = "", hud = true, followClass = "left-3 top-3", chipsClass = "inset-x-2 bottom-2", rightInset = 0,
+  director, lang = "en", className = "", hud = true, followClass = "left-3 top-3", chipsClass = "inset-x-2 bottom-2", rightInset = 0,
 }: {
-  director: OfficeDirector; className?: string; hud?: boolean;
+  director: OfficeDirector; lang?: Lang; className?: string; hud?: boolean;
   /** Where the "Following" card and the agent chips sit (Tailwind position classes). */
   followClass?: string; chipsClass?: string;
   /** Pixels on the right covered by a panel, so the camera centers the subject in what's left. */
   rightInset?: number;
 }) {
+  const t = STRINGS[lang].office;
   const snap = useSyncExternalStore(director.subscribe, director.getSnapshot, director.getSnapshot);
   const [mode, setMode] = useState<FollowMode>("auto");
   const view = useRef<ViewControl>({ az: 0, zoom: 1 });
@@ -75,7 +77,7 @@ export default function Office({
 
   return (
     <div ref={box} className={`relative select-none overflow-hidden ${className}`} style={{ touchAction: "pan-y" }}>
-      <SceneBoundary>
+      <SceneBoundary message={t.failed}>
         <OfficeScene director={director} snap={snap} mode={mode} view={view} onPick={(id: MascotId) => setMode(id)} rightInset={rightInset} labels={labels} />
       </SceneBoundary>
 
@@ -106,26 +108,26 @@ export default function Office({
               <>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: def.color }} />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{mode === "auto" ? "Following the busiest agent" : "Following"}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{mode === "auto" ? t.followingBusiest : t.following}</span>
                 </div>
                 <div className="mt-0.5 text-sm font-bold text-ink">{def.name}</div>
                 <div className="text-muted">
-                  {f.phase === "walking" && f.station ? <>Walking to the <b className="text-ink">{f.station}</b>{f.label ? ` · ${f.label}` : ""}</>
-                    : f.phase === "working" ? <>{f.label} <span className="text-muted">at the {f.station}</span></>
+                  {f.phase === "walking" && f.station ? <>{t.walkingTo} <b className="text-ink">{f.station}</b>{f.label ? ` · ${f.label}` : ""}</>
+                    : f.phase === "working" ? <>{f.label} <span className="text-muted">{t.at} {f.station}</span></>
                     : def.role}
                 </div>
-                {f.queued > 0 && <div className="mt-0.5 hidden text-[11px] text-amber sm:block">{f.queued} more task{f.queued > 1 ? "s" : ""} lined up</div>}
+                {f.queued > 0 && <div className="mt-0.5 hidden text-[11px] text-amber sm:block">{t.more(f.queued)}</div>}
               </>
             ) : (
               <>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">The office</div>
-                <div className="text-ink">{snap.mascots.some((m) => m.phase !== "idle") ? "Agents at work. Pick one to follow." : "Everyone is at their desk."}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">{t.title}</div>
+                <div className="text-ink">{snap.mascots.some((m) => m.phase !== "idle") ? t.busy : t.idle}</div>
               </>
             )}
           </div>
 
           <div className={`absolute ${chipsClass} z-40 flex flex-wrap items-center justify-center gap-1`}>
-            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Auto</button>
+            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>{t.auto}</button>
             {MASCOTS.map((m) => {
               const s = snap.mascots.find((x) => x.id === m.id)!;
               const on = mode === m.id;
@@ -141,7 +143,7 @@ export default function Office({
                 </button>
               );
             })}
-            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Whole office</button>
+            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>{t.whole}</button>
           </div>
         </>
       )}
