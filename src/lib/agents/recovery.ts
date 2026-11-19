@@ -249,18 +249,20 @@ export function pickFollowUp(matches: ProgramMatch[], today: string): FollowUpQu
 
 export function buildPlan(matches: ProgramMatch[], conflicts: Conflict[], followUp: FollowUpQuestion | undefined, today: string): PlanTask[] {
   const tasks: PlanTask[] = [];
-  const add = (t: Omit<PlanTask, "id">) => tasks.push({ id: `task-${tasks.length + 1}`, ...t });
+  // Ids come from what the task is about, not its position, so an approval still
+  // points at the same task after a re-run changes the plan (e.g. a new document).
+  const add = (id: string, t: Omit<PlanTask, "id">) => tasks.push({ id: `task:${id}`, ...t });
 
   const critical = matches.find((m) => m.programId === "critical-care");
-  if (critical) add({ title: "Get Carmen's doctor to sign the critical care form", owner: "Navigator", priority: 0, programId: critical.programId, status: "blocked", detail: "Her oxygen concentrator needs power. Also make a backup plan for the next outage." });
+  if (critical) add(critical.programId, { title: "Get Carmen's doctor to sign the critical care form", owner: "Navigator", priority: 0, programId: critical.programId, status: "blocked", detail: "Her oxygen concentrator needs power. Also make a backup plan for the next outage." });
 
-  for (const c of conflicts) add({ title: `Resolve conflict: ${c.field}`, owner: "Household", priority: 1, status: "ready", detail: c.question.en });
+  for (const c of conflicts) add(c.id, { title: `Resolve conflict: ${c.field}`, owner: "Household", priority: 1, status: "ready", detail: c.question.en });
 
-  if (followUp) add({ title: `Collect: ${EVIDENCE_LABELS[followUp.evidence]}`, owner: "Household", priority: 1, status: "ready", detail: followUp.why });
+  if (followUp) add(`collect:${followUp.evidence}`, { title: `Collect: ${EVIDENCE_LABELS[followUp.evidence]}`, owner: "Household", priority: 1, status: "ready", detail: followUp.why });
 
   for (const m of matches.filter((x) => x.programId !== "critical-care")) {
     const days = m.deadline ? daysBetween(today, m.deadline.date) : 90;
-    add({
+    add(m.programId, {
       title: m.nextAction,
       owner: m.programId === "sba-home-loan" ? "Navigator" : "BayouBridge",
       due: m.deadline?.date,
@@ -275,7 +277,7 @@ export function buildPlan(matches: ProgramMatch[], conflicts: Conflict[], follow
 
 // ── Recovery graph ──────────────────────────────────────────────────────────
 
-const NEED_EVIDENCE: Record<NeedKey, string[]> = {
+export const NEED_EVIDENCE: Record<NeedKey, string[]> = {
   roof_damage: ["roof_damage"],
   interior_water_damage: ["interior_water_damage"],
   medical_power: ["medical_power"],
@@ -283,7 +285,7 @@ const NEED_EVIDENCE: Record<NeedKey, string[]> = {
   fema_denial: ["fema_ineligible_info"],
 };
 
-const PROGRAM_NEEDS: Record<string, NeedKey[]> = {
+export const PROGRAM_NEEDS: Record<string, NeedKey[]> = {
   "fema-appeal": ["fema_denial", "roof_damage"],
   "insurance-claim": ["roof_damage", "interior_water_damage"],
   "sba-home-loan": ["roof_damage", "interior_water_damage"],

@@ -1,6 +1,7 @@
 import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionResult, TaskUpdate } from "@/lib/types";
 import { classify, extractWithRules, occupancyCheck } from "./evidence";
 import { fallbackReason, withTimeout } from "./util";
+import { buildPacket } from "./packet";
 import { summarizeIssues } from "./validate";
 import {
   buildGraph, buildPlan, deriveNeeds, evidenceScore, findConflicts, matchPrograms, pickFollowUp, resolvePeople,
@@ -33,16 +34,18 @@ interface Task {
 
 // Rough minutes a caseworker spends on each step by hand (from navigator
 // interviews to be done this week — placeholders until then).
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 /** Which part of the case each task fills in, sent to `onState` when it finishes. */
 const SLICES: Record<string, (keyof CaseState)[]> = {
   occupancy: ["extractions"], people: ["people"], needs: ["needs"], conflicts: ["conflicts"], match: ["matches"],
-  gaps: ["evidenceScore", "followUp"], plan: ["plan"], safety: ["plan"], graph: ["graph"],
+  gaps: ["evidenceScore", "followUp"], plan: ["plan"], packet: ["packets"], safety: ["plan"], graph: ["graph"],
 };
 
 const LABELS: Record<string, string> = {
   occupancy: "Checking proof of occupancy", people: "Resolving people", needs: "Building needs list",
   conflicts: "Checking for conflicts", match: "Matching recovery pathways", gaps: "Scoring evidence",
-  plan: "Building the plan", safety: "Applying approval gates", graph: "Updating the graph",
+  plan: "Building the plan", packet: "Drafting packets", safety: "Applying approval gates", graph: "Updating the graph",
 };
 
 /** Optional live hooks. Callers that pass none get exactly the old behavior. */
@@ -57,7 +60,7 @@ export interface RunHooks {
   signal?: AbortSignal;
 }
 
-const MANUAL_MINUTES = { extract: 8, occupancy: 5, people: 5, conflicts: 10, match: 25, gaps: 10, plan: 15, graph: 5 };
+const MANUAL_MINUTES = { extract: 8, occupancy: 5, people: 5, conflicts: 10, match: 25, gaps: 10, plan: 15, packet: 12, graph: 5 };
 
 export async function runCase(input: {
   caseId: string; householdName: string; address: string; disaster: string; today: string;
@@ -79,7 +82,7 @@ export async function runCase(input: {
   const state: CaseState = {
     caseId: input.caseId, householdName: input.householdName, address: input.address, disaster: input.disaster,
     today: input.today, documents: input.documents, extractions: [], people: [], needs: [], conflicts: [],
-    matches: [], plan: [], graph: { nodes: [], edges: [] }, evidenceScore: 0, events, minutesSaved: 0,
+    matches: [], plan: [], packets: [], graph: { nodes: [], edges: [] }, evidenceScore: 0, events, minutesSaved: 0,
     extraction: { claude: 0, rules: 0, fellBack: 0, mode: "rules" },
   };
   let aliasNotes: string[] = [];
@@ -214,9 +217,22 @@ export async function runCase(input: {
       },
     },
     {
-      id: "safety", agent: "Safety Agent", deps: ["plan"],
+      // Packets only for pathways with every required document on file.
+      id: "packet", agent: "Packet Agent", deps: ["plan"],
       run: () => {
-        const gated = state.plan.filter((t) => t.status !== "blocked" && t.owner === "BayouBridge").length;
+        state.packets = state.matches.filter((m) => !m.blocked).map((m) => buildPacket(m, state));
+        for (const p of state.packets) {
+          log("Packet Agent", `Drafted packet for ${state.matches.find((m) => m.programId === p.programId)?.name ?? p.programId}`,
+            `${plural(p.attachments.length, "attachment")}, ${plural(p.citations.length, "cited fact")}, English and Spanish cover note. Held as a draft.`, p.attachments.map((a) => a.docId), MANUAL_MINUTES.packet);
+        }
+      },
+    },
+    {
+      id: "safety", agent: "Safety Agent", deps: ["packet"],
+      run: () => {
+        // Every outbound action needs a navigator's approval, which only the server's approve route can record.
+        state.plan = state.plan.map((t) => (t.owner === "BayouBridge" ? { ...t, requiresApproval: true } : t));
+        const gated = state.plan.filter((t) => t.status !== "blocked" && t.requiresApproval).length;
         log("Safety Agent", "Applied approval gates", `${gated} outbound actions held for navigator approval. Nothing is sent or submitted automatically.`);
       },
     },

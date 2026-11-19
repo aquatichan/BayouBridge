@@ -141,6 +141,35 @@ export interface PlanTask {
   programId?: string;
   status: "ready" | "blocked" | "needs_approval";
   detail: string;
+  /** Stamped by the Safety Agent on every outbound (BayouBridge-owned) task. */
+  requiresApproval?: boolean;
+  /** Set only by the server's approve route (POST /api/approve). */
+  approved?: boolean;
+}
+
+/** What the Packet Agent would send for one pathway. Never leaves the sandbox outbox. */
+export interface Packet {
+  id: string; // "packet:<programId>"
+  programId: string;
+  title: string;
+  /** Who it would go to (the program's agency). */
+  to: string;
+  summary: string;
+  attachments: { docId: string; title: string }[];
+  citations: { factId: string; quote: string; docId: string }[];
+  /** Cover note in English, plus Spanish so the household can read what is sent for them. */
+  bilingualCover: { en: string; es: string };
+  status: "draft" | "approved" | "queued";
+}
+
+/** A packet a navigator approved, held in the in-memory sandbox outbox. */
+export interface OutboxItem {
+  id: string;
+  caseId: string;
+  taskId: string;
+  packet: Packet;
+  approvedBy: string;
+  queuedAt: string; // ISO timestamp
 }
 
 export type GraphNodeKind = "document" | "need" | "program" | "missing" | "deadline";
@@ -206,6 +235,7 @@ export interface CaseState {
   matches: ProgramMatch[];
   followUp?: FollowUpQuestion;
   plan: PlanTask[];
+  packets: Packet[];
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   evidenceScore: number; // 0..100
   events: ActivityEvent[];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, PlanTask, TaskUpdate } from "@/lib/types";
+import type { ActivityEvent, AgentName, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import RecoveryGraph from "./RecoveryGraph";
 import Capybara from "./Capybara";
@@ -82,7 +82,9 @@ export default function Dashboard({ household, documents, followUps, today }: {
   const [error, setError] = useState<string | null>(null);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [lang, setLang] = useState<"en" | "es">("en");
-  const [approved, setApproved] = useState<Record<string, boolean>>({});
+  const [outbox, setOutbox] = useState<OutboxItem[]>([]);
+  const [approving, setApproving] = useState<string | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
   const feedRef = useRef<HTMLOListElement>(null);
 
   /**
@@ -94,7 +96,8 @@ export default function Dashboard({ household, documents, followUps, today }: {
     const followUp = Boolean(addDocumentIds?.length);
     const before = followUp ? events : []; // a follow-up run's events are appended to these
     setFetching(true); setError(null); setQueue([]); setTasks({});
-    if (!followUp) { setState(null); setEvents([]); setApproved({}); setMode(null); }
+    setApproveError(null);
+    if (!followUp) { setState(null); setEvents([]); setMode(null); }
     const init: RequestInit = {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -187,16 +190,38 @@ export default function Dashboard({ household, documents, followUps, today }: {
   const cheer = !running && fema?.readiness === 1 && docs.length > documents.length
     ? "The FEMA appeal has every document it needs now." : undefined;
 
-  function approve(t: PlanTask) {
-    setApproved((a) => ({ ...a, [t.id]: true }));
-    setEvents((ev) => {
-      const seq = ev.length + 1;
-      return [
-        ...ev,
-        { seq, agent: "Safety Agent", action: "Approval recorded", detail: `Navigator approved: "${t.title}"`, minutesSaved: 0 },
-        { seq: seq + 1, agent: "Packet Agent", action: "Queued to sandbox outbox", detail: "Simulated send only. No real email or submission leaves BayouBridge.", minutesSaved: 6 },
-      ];
-    });
+  // The sandbox outbox lives on the server, so it is still there after a page refresh.
+  useEffect(() => {
+    fetch(`/api/outbox?caseId=${encodeURIComponent(household.caseId)}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d: { items: OutboxItem[] }) => setOutbox(d.items))
+      .catch(() => {});
+  }, [household.caseId]);
+
+  /** Approval is recorded by the server, which checks the task against the plan it produced. */
+  async function approve(t: PlanTask) {
+    setApproveError(null); setApproving(t.id);
+    try {
+      const res = await fetch("/api/approve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ caseId: household.caseId, taskId: t.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Server returned ${res.status}`);
+      const { task, events: approvalEvents, item } = data as { task: PlanTask; events: ActivityEvent[]; item: OutboxItem };
+      setState((prev) => prev && {
+        ...prev,
+        plan: prev.plan.map((x) => (x.id === task.id ? task : x)),
+        packets: prev.packets.map((p) => (p.id === item.packet.id ? item.packet : p)),
+      });
+      setEvents((ev) => [...ev, ...approvalEvents]);
+      setOutbox((o) => (o.some((x) => x.id === item.id) ? o : [...o, item]));
+    } catch (e) {
+      setApproveError(`Couldn't approve "${t.title}": ${(e as Error).message}`);
+    } finally {
+      setApproving(null);
+    }
   }
 
   return (
@@ -383,6 +408,7 @@ export default function Dashboard({ household, documents, followUps, today }: {
 
             {/* Plan */}
             <Card title="Recovery plan" right={<span className="text-xs text-muted">Nothing goes out without approval</span>}>
+              {approveError && <p role="alert" className="mb-2 rounded-xl bg-clay-soft p-2 text-xs text-clay">{approveError}</p>}
               {s && has("Built recovery plan") ? (
                 <ol className="space-y-2">
                   {s.plan.map((t, i) => (
@@ -394,9 +420,9 @@ export default function Dashboard({ household, documents, followUps, today }: {
                       </div>
                       {t.status === "blocked" && <span className="rounded-full bg-clay-soft px-2 py-0.5 text-[11px] font-medium text-clay">Blocked</span>}
                       {t.status === "ready" && <span className="rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] font-medium text-bayou">Ready</span>}
-                      {t.status === "needs_approval" && (approved[t.id]
-                        ? <span className="rounded-full bg-moss px-2 py-0.5 text-[11px] font-medium text-white">Approved · sent to sandbox</span>
-                        : <button onClick={() => approve(t)} disabled={running} className="rounded-full border border-bayou px-3 py-1 text-xs font-semibold text-bayou hover:bg-bayou hover:text-white disabled:opacity-50">Approve</button>)}
+                      {t.status === "needs_approval" && (t.approved
+                        ? <span className="rounded-full bg-moss px-2 py-0.5 text-[11px] font-medium text-white">Approved · in sandbox outbox</span>
+                        : <button onClick={() => approve(t)} disabled={running || approving === t.id} className="rounded-full border border-bayou px-3 py-1 text-xs font-semibold text-bayou hover:bg-bayou hover:text-white disabled:opacity-50">Approve</button>)}
                     </li>
                   ))}
                 </ol>
@@ -430,6 +456,25 @@ export default function Dashboard({ household, documents, followUps, today }: {
                   ))}
                 </ol>
               ) : <Waiting>Press <b>Run agents</b> to start the case.</Waiting>}
+            </Card>
+
+            {/* Sandbox outbox */}
+            <Card title={`Sandbox outbox (${outbox.length})`} right={<span className="text-xs text-muted">Simulated. Nothing is sent.</span>}>
+              {outbox.length ? (
+                <ul className="space-y-2">
+                  {outbox.map((o) => (
+                    <li key={o.id} className="fade-up rounded-xl border border-line p-2.5 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <b className="text-sm">{o.packet.title}</b>
+                        <span className="shrink-0 rounded-full bg-moss px-2 py-0.5 text-[10px] font-medium text-white">Queued</span>
+                      </div>
+                      <div className="text-muted">To {o.packet.to} · approved by {o.approvedBy}</div>
+                      <div className="mt-1 text-muted">Attached: {o.packet.attachments.map((a) => a.title).join(", ")}</div>
+                      <p className="mt-1.5 rounded-lg bg-bg p-2 leading-relaxed">{o.packet.bilingualCover[lang]}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : <Waiting>Approved packets wait here. BayouBridge never sends anything for real.</Waiting>}
             </Card>
 
             {/* Evidence locker */}

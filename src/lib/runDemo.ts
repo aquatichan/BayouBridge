@@ -63,6 +63,6 @@ export async function runDemoCase(opts: DemoRunOptions = {}): Promise<CaseState>
       state = await runCase(base);
     }
   }
-  saveRun(state);
-  return state;
+  // The stored copy carries earlier approvals (task ids are stable across runs).
+  return saveRun(state);
 }
