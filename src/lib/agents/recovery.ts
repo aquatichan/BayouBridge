@@ -1,6 +1,6 @@
 import { EVIDENCE_LABELS, programs, type ProgramRule } from "@/data/resources";
 import type {
-  CaseDocument, Conflict, EvidenceType, ExtractionResult, Fact, FollowUpQuestion,
+  CaseDocument, Conflict, DocKind, EvidenceType, ExtractionResult, Fact, FollowUpQuestion,
   GraphEdge, GraphNode, Need, NeedKey, Person, PlanTask, ProgramMatch,
 } from "@/lib/types";
 
@@ -34,12 +34,63 @@ export function sameName(a: string, b: string): boolean {
   return firstClose && sharesSurname;
 }
 
+// ── Household context ──────────────────────────────────────────────────────
+// Names, places and equipment in the text below come from the case's own facts,
+// so the same code works for any household (see src/data/household2.ts).
+
+/** What household-specific wording needs: the street, and who depends on powered medical equipment. */
+export interface CaseContext {
+  street: string;
+  medical?: { first?: string; relation?: string; equipment: string };
+}
+
+const overlaps = (a: string, b: string) => a.includes(b) || b.includes(a);
+const equipmentOf = (needValue: string) => needValue.replace(/\s*\(.*\)$/, "");
+/** "Oxygen concentrator" → "oxygen concentrator", but "CPAP machine" stays as is. */
+const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
+const EQUIPMENT_SHORT: Record<string, string> = { "oxygen concentrator": "oxygen" };
+
+/** The relative named in the same sentence as a medical-equipment need, if any. */
+function medicalFactFor(person: Fact, facts: Fact[]): Fact | undefined {
+  return facts.find((n) => n.type === "need" && n.normalized === "medical_power" && n.docId === person.docId && overlaps(n.quote, person.quote));
+}
+
+export function caseContext(address: string, ex: ExtractionResult[]): CaseContext {
+  const facts = allFacts(ex);
+  const street = address.split(",")[0].trim() || "your home";
+  const need = facts.find((f) => f.type === "need" && f.normalized === "medical_power");
+  if (!need) return { street };
+  const person = facts.find((f) => f.type === "person" && f.normalized?.startsWith("role:") && medicalFactFor(f, [need]));
+  const named = need.value.match(/\(([^,)]+)/)?.[1];
+  return {
+    street,
+    medical: {
+      first: person ? person.value.split(/[\s(]/)[0] : named && named !== "household member" ? named : undefined,
+      relation: person?.normalized?.slice("role:".length),
+      equipment: lowerFirst(equipmentOf(need.value)) || "medical equipment",
+    },
+  };
+}
+
+const RELATION: Record<string, string> = { "role:mother": "Mother", "role:son": "Son" };
+
+/** "Mother, 71, uses oxygen": relation, age and equipment, all read from the facts. */
+function roleOf(f: Fact, facts: Fact[]): string {
+  const relation = f.normalized ? RELATION[f.normalized] : undefined;
+  if (!relation) return "Head of household";
+  const age = f.value.match(/\(age (\d+)\)/)?.[1] ?? f.quote.match(/\b(?:tiene|is|aged?)\s+(\d{1,3})\b/i)?.[1];
+  const need = medicalFactFor(f, facts);
+  const equipment = need ? lowerFirst(equipmentOf(need.value)) : undefined;
+  return [relation, age, equipment && `uses ${EQUIPMENT_SHORT[equipment] ?? equipment}`].filter(Boolean).join(", ");
+}
+
 export function resolvePeople(ex: ExtractionResult[]): { people: Person[]; aliasNotes: string[] } {
   const people: Person[] = [];
   const aliasNotes: string[] = [];
-  for (const f of allFacts(ex).filter((f) => f.type === "person")) {
+  const facts = allFacts(ex);
+  for (const f of facts.filter((f) => f.type === "person")) {
     const name = f.value.replace(/ \(age \d+\)/, "");
-    const role = f.normalized === "role:mother" ? "Mother, 71, uses oxygen" : f.normalized === "role:son" ? "Son, 16" : "Head of household";
+    const role = roleOf(f, facts);
     const existing = people.find((p) => sameName(p.name, name) || p.aliases.includes(name));
     if (existing) {
       if (existing.name !== name && !existing.aliases.includes(name)) {
@@ -64,7 +115,9 @@ const NEED_META: Record<NeedKey, { label: string; urgency: Need["urgency"] }> = 
   food_loss: { label: "Food lost in 4-day outage", urgency: "medium" },
 };
 
-export function deriveNeeds(ex: ExtractionResult[]): Need[] {
+const ROOMS = ["living room", "kitchen", "bedroom", "bathroom", "garage"];
+
+export function deriveNeeds(ex: ExtractionResult[], docs: CaseDocument[] = []): Need[] {
   const map = new Map<NeedKey, string[]>();
   for (const f of allFacts(ex)) {
     let key: NeedKey | undefined;
@@ -73,40 +126,80 @@ export function deriveNeeds(ex: ExtractionResult[]): Need[] {
     if (key) map.set(key, [...(map.get(key) ?? []), f.id]);
   }
   const order = { critical: 0, high: 1, medium: 2 };
+  const facts = allFacts(ex);
+  // Labels that depend on the household come from the supporting facts and their documents.
+  const labelFor = (key: NeedKey, ids: string[]) => {
+    const v = facts.find((f) => f.id === ids[0])?.value ?? "";
+    const text = docs.filter((d) => ids.some((id) => facts.find((f) => f.id === id)?.docId === d.id)).map((d) => d.text.toLowerCase()).join("\n");
+    if (key === "medical_power" && v) return `${equipmentOf(v)} needs reliable power`;
+    const outage = v.match(/\(([^)]*outage)\)/)?.[1];
+    if (key === "food_loss") return outage ? `Food lost in ${outage}` : "Food lost in power outage";
+    if (key === "roof_damage" && docs.length) return /\btarp/.test(text) ? NEED_META.roof_damage.label : "Roof wind damage";
+    if (key === "interior_water_damage" && docs.length) {
+      const room = ROOMS.find((r) => text.includes(r));
+      return room ? `${room[0].toUpperCase()}${room.slice(1)} water damage` : "Interior water damage";
+    }
+    return NEED_META[key].label;
+  };
   return [...map.entries()]
-    .map(([key, supportedBy]) => ({ key, ...NEED_META[key], supportedBy }))
+    .map(([key, supportedBy]) => ({ key, ...NEED_META[key], label: labelFor(key, supportedBy), supportedBy }))
     .sort((a, b) => order[a.urgency] - order[b.urgency]);
 }
 
 // ── Conflicts ───────────────────────────────────────────────────────────────
 
-export function findConflicts(ex: ExtractionResult[], aliasNotes: string[]): Conflict[] {
+const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const dayEn = (iso: string) => `${MONTHS_EN[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8, 10))}`;
+const dayEs = (iso: string) => `el ${Number(iso.slice(8, 10))} de ${MONTHS_ES[Number(iso.slice(5, 7)) - 1]}`;
+
+/** How a question names the source of a fact. */
+const SOURCE: Partial<Record<DocKind, { en: string; es: string }>> = {
+  fema_letter: { en: "FEMA", es: "FEMA" },
+  insurance_email: { en: "the insurer", es: "la aseguradora" },
+  estimate: { en: "the contractor's estimate", es: "el presupuesto del contratista" },
+  utility_bill: { en: "the utility bill", es: "la factura" },
+  voice_note: { en: "your voice note", es: "su nota de voz" },
+  photo: { en: "a photo", es: "una foto" },
+};
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const joinList = (xs: string[], and: string) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${and} ${xs[xs.length - 1]}`);
+const toEs = (s: string) => (s.startsWith("el ") ? `al ${s.slice(3)}` : `a ${s}`); // "a + el" contracts to "al"
+
+export function findConflicts(ex: ExtractionResult[], aliasNotes: string[], docs: CaseDocument[] = []): Conflict[] {
   const conflicts: Conflict[] = [];
+  const sourceOf = (docId: string) => SOURCE[docs.find((d) => d.id === docId)?.kind as DocKind] ?? { en: "one document", es: "un documento" };
   const losses = allFacts(ex).filter((f) => f.type === "date_of_loss" && f.normalized);
-  const distinct = [...new Set(losses.map((f) => f.normalized))];
+  const distinct = [...new Set(losses.map((f) => f.normalized!))];
   if (distinct.length > 1) {
+    // One clause per date, naming the first document that states it.
+    const parts = distinct.map((iso) => ({ iso, src: sourceOf(losses.find((f) => f.normalized === iso)!.docId) }));
     conflicts.push({
       id: "conflict-date-of-loss",
       field: "Date of loss",
       values: losses.map((f) => ({ value: f.value, docId: f.docId, quote: f.quote })),
-      impact: "Insurer and FEMA records disagree. Mismatched dates can delay a claim review.",
+      impact: `${parts.map((p) => p.src.en).sort().join() === "FEMA,the insurer" ? "Insurer and FEMA records" : "The documents"} disagree. Mismatched dates can delay a claim review.`,
       question: {
-        en: "Which day did the damage happen? FEMA has October 9 and the insurer has October 10.",
-        es: "¿Qué día ocurrió el daño? FEMA tiene el 9 de octubre y la aseguradora tiene el 10 de octubre.",
+        en: `Which day did the damage happen? ${cap(joinList(parts.map((p) => `${p.src.en} has ${dayEn(p.iso)}`), "and"))}.`,
+        es: `¿Qué día ocurrió el daño? ${cap(joinList(parts.map((p) => `${p.src.es} tiene ${dayEs(p.iso)}`), "y"))}.`,
       },
     });
   }
   const persons = allFacts(ex).filter((f) => f.type === "person" && !f.normalized?.startsWith("role:"));
   const variants = [...new Set(persons.map((p) => p.value))];
   if (variants.length > 1 && aliasNotes.length) {
+    // The spelling found in the fewest documents is probably the one to correct.
+    const docCount = (v: string) => new Set(persons.filter((p) => p.value === v).map((p) => p.docId)).size;
+    const odd = variants.reduce((a, b) => (docCount(b) < docCount(a) ? b : a));
+    const who = sourceOf(persons.find((p) => p.value === odd)!.docId);
     conflicts.push({
       id: "conflict-name",
       field: "Policyholder name",
       values: variants.map((v) => { const f = persons.find((p) => p.value === v)!; return { value: v, docId: f.docId, quote: f.quote }; }),
       impact: "The same person appears under different spellings. Insurers may ask for ID to match records.",
       question: {
-        en: "Is your legal name Ana Reyes or Anna Reyes-Ortega? We'll ask the insurer to correct it.",
-        es: "¿Su nombre legal es Ana Reyes o Anna Reyes-Ortega? Le pediremos a la aseguradora que lo corrija.",
+        en: `Is your legal name ${joinList(variants, "or")}? We'll ask ${who.en} to correct it.`,
+        es: `¿Su nombre legal es ${joinList(variants, "o")}? Le pediremos ${toEs(who.es)} que lo corrija.`,
       },
     });
   }
@@ -133,7 +226,7 @@ export function caseSignals(ex: ExtractionResult[]): Record<string, boolean> {
 }
 
 export function matchPrograms(
-  docs: CaseDocument[], ex: ExtractionResult[], needs: Need[], today: string,
+  docs: CaseDocument[], ex: ExtractionResult[], needs: Need[], today: string, ctx?: CaseContext,
 ): ProgramMatch[] {
   const facts = allFacts(ex);
   const signals = caseSignals(ex);
@@ -160,7 +253,9 @@ export function matchPrograms(
     }
 
     const missing = evidence.filter((e) => !e.satisfiedBy.length);
-    const reasons = firing.map((t) => t.description);
+    const equipment = ctx?.medical?.equipment;
+    const withArticle = equipment ? `${/^[aeiou]/i.test(equipment) ? "an" : "a"} ${equipment}` : "powered medical equipment";
+    const reasons = firing.map((t) => t.description.replace("{equipment}", withArticle));
     if (deadline) reasons.push(`Deadline ${deadline.date} (${daysBetween(today, deadline.date)} days left): ${deadline.basis}`);
 
     return {
@@ -171,7 +266,7 @@ export function matchPrograms(
       evidence,
       readiness,
       deadline,
-      nextAction: p.nextAction,
+      nextAction: p.nextAction.replace("{member}", ctx?.medical?.first ?? "the household member"),
       blocked: missing.length > 0,
       blockedBy: missing.map((m) => m.label),
       source: p.source,
@@ -191,18 +286,37 @@ export function evidenceScore(matches: ProgramMatch[]): number {
   return Math.round((100 * [...req.values()].filter(Boolean).length) / req.size);
 }
 
+/** The follow-up question for a missing evidence type, worded from the household's own facts. */
+function questionFor(type: EvidenceType, ctx: CaseContext, hint?: string): { en: string; es: string } | undefined {
+  if (type === "proof_of_occupancy") {
+    const bill = hint?.match(/^(?:(\w+) )?electric bill in email$/i);
+    const mes = bill?.[1] && MONTHS_ES[MONTHS_EN.indexOf(bill[1])];
+    const ask = bill
+      ? { en: `You mentioned your ${bill[1] ? `${bill[1]} ` : ""}electric bill is in your email. Can you forward it to us?`,
+          es: `Usted mencionó que tiene la factura de la luz${mes ? ` de ${mes}` : ""} en su correo. ¿Nos la puede reenviar?` }
+      : hint
+        ? { en: `You mentioned you have it (${hint}). Can you send it to us?`, es: `Usted mencionó que lo tiene (${hint}). ¿Nos lo puede enviar?` }
+        : { en: "Can you share a utility bill, lease, or bank statement from before the storm?",
+            es: "¿Puede compartir una factura de servicios, un contrato de renta o un estado de cuenta de antes del huracán?" };
+    return {
+      en: `${ask.en} FEMA needs it to show you lived at ${ctx.street} before the storm.`,
+      es: `${ask.es} FEMA ${bill || !hint ? "la" : "lo"} necesita para comprobar que vivía en ${ctx.street} antes del huracán.`,
+    };
+  }
+  if (type === "medical_need_documentation") {
+    const first = ctx.medical?.first;
+    return {
+      en: `Who is ${first ? `${first}'s` : "the household member's"} doctor? We can send them the form to list your home as a critical care customer.`,
+      es: `¿Quién es el médico de ${first ?? "su familiar"}? Le podemos enviar el formulario para registrar su casa como cliente de cuidado crítico.`,
+    };
+  }
+  return QUESTIONS[type];
+}
+
 const QUESTIONS: Partial<Record<EvidenceType, { en: string; es: string }>> = {
-  proof_of_occupancy: {
-    en: "You mentioned your September electric bill is in your email. Can you forward it to us? FEMA needs it to show you lived at 1847 Cypress Bayou Ln before the storm.",
-    es: "Usted mencionó que tiene la factura de la luz de septiembre en su correo. ¿Nos la puede reenviar? FEMA la necesita para comprobar que vivía en 1847 Cypress Bayou Ln antes del huracán.",
-  },
   insurance_policy: {
     en: "Do you have the first page of your homeowners policy (the declarations page)? It shows what is covered.",
     es: "¿Tiene la primera página de su póliza de seguro de vivienda (la página de declaraciones)? Muestra lo que está cubierto.",
-  },
-  medical_need_documentation: {
-    en: "Who is Carmen's doctor? We can send them the form to list your home as a critical care customer.",
-    es: "¿Quién es el médico de Carmen? Le podemos enviar el formulario para registrar su casa como cliente de cuidado crítico.",
   },
   proof_of_identity: {
     en: "Can you take a photo of your driver's license or state ID?",
@@ -220,7 +334,7 @@ const servesCriticalNeed = (programId: string) =>
  * deadline is, with a bonus when the household already said they have it and
  * a smaller one when it unblocks a pathway for a critical (safety) need.
  */
-export function pickFollowUp(matches: ProgramMatch[], today: string): FollowUpQuestion | undefined {
+export function pickFollowUp(matches: ProgramMatch[], today: string, ctx: CaseContext = { street: "your home" }): FollowUpQuestion | undefined {
   const score = new Map<EvidenceType, { s: number; unblocks: string[]; hint?: string }>();
   for (const m of matches) {
     const urgency = m.deadline ? Math.max(1, 60 - daysBetween(today, m.deadline.date)) / 10 : 1;
@@ -236,7 +350,7 @@ export function pickFollowUp(matches: ProgramMatch[], today: string): FollowUpQu
   const best = [...score.entries()].sort((a, b) => b[1].s - a[1].s)[0];
   if (!best) return undefined;
   const [type, info] = best;
-  const q = QUESTIONS[type] ?? { en: `Can you share: ${EVIDENCE_LABELS[type]}?`, es: `¿Puede compartir: ${EVIDENCE_LABELS[type]}?` };
+  const q = questionFor(type, ctx, info.hint) ?? { en: `Can you share: ${EVIDENCE_LABELS[type]}?`, es: `¿Puede compartir: ${EVIDENCE_LABELS[type]}?` };
   return {
     evidence: type,
     unblocks: info.unblocks,
@@ -247,14 +361,26 @@ export function pickFollowUp(matches: ProgramMatch[], today: string): FollowUpQu
 
 // ── Plan ────────────────────────────────────────────────────────────────────
 
-export function buildPlan(matches: ProgramMatch[], conflicts: Conflict[], followUp: FollowUpQuestion | undefined, today: string): PlanTask[] {
+export function buildPlan(
+  matches: ProgramMatch[], conflicts: Conflict[], followUp: FollowUpQuestion | undefined, today: string,
+  ctx: CaseContext = { street: "your home" },
+): PlanTask[] {
   const tasks: PlanTask[] = [];
   // Ids come from what the task is about, not its position, so an approval still
   // points at the same task after a re-run changes the plan (e.g. a new document).
   const add = (id: string, t: Omit<PlanTask, "id">) => tasks.push({ id: `task:${id}`, ...t });
 
   const critical = matches.find((m) => m.programId === "critical-care");
-  if (critical) add(critical.programId, { title: "Get Carmen's doctor to sign the critical care form", owner: "Navigator", priority: 0, programId: critical.programId, status: "blocked", detail: "Her oxygen concentrator needs power. Also make a backup plan for the next outage." });
+  if (critical) {
+    const m = ctx.medical;
+    // "Her"/"His" only when the documents state the relationship (mother/son); otherwise the person's name.
+    const whose = m?.relation === "mother" ? "Her" : m?.relation === "son" ? "His" : m?.first ? `${m.first}'s` : "Their";
+    add(critical.programId, {
+      title: `Get ${m?.first ? `${m.first}'s` : "the household member's"} doctor to sign the critical care form`,
+      owner: "Navigator", priority: 0, programId: critical.programId, status: "blocked",
+      detail: `${whose} ${m?.equipment ?? "medical equipment"} needs power. Also make a backup plan for the next outage.`,
+    });
+  }
 
   for (const c of conflicts) add(c.id, { title: `Resolve conflict: ${c.field}`, owner: "Household", priority: 1, status: "ready", detail: c.question.en });
 

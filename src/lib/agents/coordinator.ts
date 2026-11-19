@@ -4,7 +4,7 @@ import { fallbackReason, withTimeout } from "./util";
 import { buildPacket } from "./packet";
 import { summarizeIssues } from "./validate";
 import {
-  buildGraph, buildPlan, deriveNeeds, evidenceScore, findConflicts, matchPrograms, pickFollowUp, resolvePeople,
+  buildGraph, buildPlan, caseContext, deriveNeeds, evidenceScore, findConflicts, matchPrograms, pickFollowUp, resolvePeople,
 } from "./recovery";
 
 // Coordinator — runs the agents as a task graph. Each task names the tasks it
@@ -88,6 +88,8 @@ export async function runCase(input: {
     extraction: { claude: 0, rules: 0, fellBack: 0, mode: "rules" }, warnings: [],
   };
   let aliasNotes: string[] = [];
+  /** Household wording (street, who uses medical equipment), read from the facts so far. */
+  const ctx = () => caseContext(input.address, state.extractions);
   const bills = input.documents.filter((d) => d.kind === "utility_bill");
 
   // ── Claude extraction with time limits, fallback and a circuit breaker ──
@@ -185,21 +187,21 @@ export async function runCase(input: {
     {
       id: "needs", agent: "Coordinator", deps: ["people"],
       run: () => {
-        state.needs = deriveNeeds(state.extractions);
+        state.needs = deriveNeeds(state.extractions, state.documents);
         log("Coordinator", "Built needs list", state.needs.map((n) => `${n.label} (${n.urgency})`).join(" · "));
       },
     },
     {
       id: "conflicts", agent: "Evidence Agent", deps: ["people"],
       run: () => {
-        state.conflicts = findConflicts(state.extractions, aliasNotes);
+        state.conflicts = findConflicts(state.extractions, aliasNotes, state.documents);
         log("Evidence Agent", "Checked for conflicts", state.conflicts.length ? state.conflicts.map((c) => c.field).join(", ") + " disagree across documents." : "No conflicts.", undefined, MANUAL_MINUTES.conflicts);
       },
     },
     {
       id: "match", agent: "Recovery-Match Agent", deps: ["needs", ...(bills.length ? ["occupancy"] : [])],
       run: () => {
-        state.matches = matchPrograms(state.documents, state.extractions, state.needs, state.today);
+        state.matches = matchPrograms(state.documents, state.extractions, state.needs, state.today, ctx());
         log("Recovery-Match Agent", "Matched recovery pathways", `${state.matches.length} possible matches from the verified source list: ${state.matches.map((m) => m.name).join(", ")}.`, undefined, MANUAL_MINUTES.match);
       },
     },
@@ -207,14 +209,14 @@ export async function runCase(input: {
       id: "gaps", agent: "Follow-up Agent", deps: ["match"],
       run: () => {
         state.evidenceScore = evidenceScore(state.matches);
-        state.followUp = pickFollowUp(state.matches, state.today);
+        state.followUp = pickFollowUp(state.matches, state.today, ctx());
         log("Follow-up Agent", "Scored evidence", `${state.evidenceScore}% of required evidence is on file.${state.followUp ? ` Best next ask: ${state.followUp.evidence.replaceAll("_", " ")}.` : ""}`, undefined, MANUAL_MINUTES.gaps);
       },
     },
     {
       id: "plan", agent: "Coordinator", deps: ["gaps", "conflicts"],
       run: () => {
-        state.plan = buildPlan(state.matches, state.conflicts, state.followUp, state.today);
+        state.plan = buildPlan(state.matches, state.conflicts, state.followUp, state.today, ctx());
         log("Coordinator", "Built recovery plan", `${state.plan.length} tasks, ${state.plan.filter((t) => t.status === "blocked").length} blocked on missing evidence.`, undefined, MANUAL_MINUTES.plan);
       },
     },

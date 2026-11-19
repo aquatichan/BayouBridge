@@ -340,7 +340,7 @@ export default function Dashboard({ household, documents, followUps, today }: {
                       className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-95 disabled:opacity-60">
                       💡 Electric bill arrives
                     </button>
-                    <span className="text-[11px] text-muted">Simulates the household forwarding their September bill (synthetic).</span>
+                    <span className="text-[11px] text-muted">Simulates the household forwarding “{bill.title}” (synthetic).</span>
                   </div>
                 )}
               </div>

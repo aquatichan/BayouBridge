@@ -21,6 +21,20 @@ export function parseDate(s: string): string | undefined {
   return undefined;
 }
 
+/** Powered medical equipment, in either language → its English name. */
+const EQUIPMENT: Record<string, string> = {
+  "concentrador de oxígeno": "Oxygen concentrator", "oxygen concentrator": "Oxygen concentrator",
+  cpap: "CPAP machine", nebulizador: "Nebulizer", nebulizer: "Nebulizer",
+};
+const MONTHS_ES_EN: Record<string, string> = {
+  enero: "January", febrero: "February", marzo: "March", abril: "April", mayo: "May", junio: "June", julio: "July",
+  agosto: "August", septiembre: "September", setiembre: "September", octubre: "October", noviembre: "November", diciembre: "December",
+};
+const NUMBER_WORDS: Record<string, number> = {
+  un: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
 const DATE_RE = "((?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},\\s*\\d{4})";
 
 function lineOf(text: string, idx: number): string {
@@ -100,18 +114,28 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   // Damage (vision captions + estimate)
   find(/(missing shingles|exposed (?:wood )?decking|wind damage to roof)/i, (m, q) =>
     add("damage", "Roof damage", m[1], q, "roof_damage", 0.9));
-  find(/(water line[^.]*|rain intrusion to living room|soaked)/i, (m, q) =>
+  find(/(water line[^.]*|rain intrusion(?: to [a-z ]+)?|soaked)/i, (m, q) =>
     add("damage", "Interior water damage", m[1], q, "interior_water_damage", 0.85));
 
   // Needs (voice note, either language)
-  find(/(concentrador de oxígeno|oxygen concentrator)/i, (m, q) =>
-    add("need", "Power-dependent medical equipment", "Oxygen concentrator (Carmen, 71)", q, "medical_power", 0.9));
-  find(/(perdimos toda la comida|lost (?:all )?(?:our )?food)/i, (m, q) =>
-    add("need", "Food loss from outage", "Refrigerated food lost (4-day outage)", q, "food_loss", 0.88));
+  // Powered medical equipment, and who uses it: the person named with an age in the same sentence.
+  find(/(concentrador de oxígeno|oxygen concentrator|cpap|nebulizador|nebulizer)/i, (m, q) => {
+    const who = q.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]+)(?: [A-ZÁÉÍÓÚ][a-záéíóúñ]+)?,? (?:tiene|is) (\d{1,3})\b/);
+    const equipment = EQUIPMENT[m[1].toLowerCase()] ?? m[1];
+    add("need", "Power-dependent medical equipment", `${equipment} (${who ? `${who[1]}, ${who[2]}` : "household member"})`, q, "medical_power", 0.9);
+  });
+  find(/(perdimos toda la comida|lost (?:all )?(?:our )?food)/i, (m, q) => {
+    const days = q.match(/\b(\d+|[a-z]+) (?:días|days)\b/i)?.[1]?.toLowerCase();
+    const n = days ? Number(days) || NUMBER_WORDS[days] : undefined;
+    add("need", "Food loss from outage", `Refrigerated food lost (${n ? `${n}-day outage` : "power outage"})`, q, "food_loss", 0.88);
+  });
   find(/(No guardé los recibos)/i, (m, q) =>
     add("mentions_evidence", "No receipts kept", "Food receipts not available", q, "absent:loss_receipts", 0.8));
-  find(/(factura de la luz[^.]*correo electrónico)/i, (m, q) =>
-    add("mentions_evidence", "Has a utility bill (not uploaded)", "September electric bill in email", q, "has:proof_of_occupancy", 0.82));
+  find(/(factura de la luz[^.]*correo electrónico|electric bill[^.]*email)/i, (m, q) => {
+    const es = m[1].match(/de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)/i)?.[1];
+    const month = es ? MONTHS_ES_EN[es.toLowerCase()] : q.match(/(January|February|March|April|May|June|July|August|September|October|November|December) electric bill/)?.[1];
+    add("mentions_evidence", "Has a utility bill (not uploaded)", `${month ? `${month} ` : ""}electric bill in email`, q, "has:proof_of_occupancy", 0.82);
+  });
 
   return { docId: doc.id, evidenceTypes: classify(doc, facts), facts, method: "rules" };
 }
