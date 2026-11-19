@@ -1,0 +1,1153 @@
+{
+  "extractions": [
+    {
+      "docId": "doc-roof-photo",
+      "evidenceTypes": [
+        "damage_photo"
+      ],
+      "facts": [
+        {
+          "id": "doc-roof-photo#f1",
+          "docId": "doc-roof-photo",
+          "type": "address",
+          "label": "Property address",
+          "value": "1847 Cypress Bayou Ln",
+          "normalized": "1847 cypress bayou ln",
+          "confidence": 0.95,
+          "quote": "Exterior photo of a single-story brick home at 1847 Cypress Bayou Ln."
+        },
+        {
+          "id": "doc-roof-photo#f2",
+          "docId": "doc-roof-photo",
+          "type": "damage",
+          "label": "Roof damage",
+          "value": "missing shingles",
+          "normalized": "roof_damage",
+          "confidence": 0.9,
+          "quote": "Roof: large section of missing shingles on the north slope, exposed wood decking."
+        },
+        {
+          "id": "doc-roof-photo#f3",
+          "docId": "doc-roof-photo",
+          "type": "damage",
+          "label": "Roof damage",
+          "value": "exposed wood decking",
+          "normalized": "roof_damage",
+          "confidence": 0.9,
+          "quote": "Roof: large section of missing shingles on the north slope, exposed wood decking."
+        }
+      ],
+      "method": "rules"
+    },
+    {
+      "docId": "doc-interior-photo",
+      "evidenceTypes": [
+        "damage_photo"
+      ],
+      "facts": [
+        {
+          "id": "doc-interior-photo#f1",
+          "docId": "doc-interior-photo",
+          "type": "damage",
+          "label": "Interior water damage",
+          "value": "water line is visible on the drywall about 14 inches above the floor",
+          "normalized": "interior_water_damage",
+          "confidence": 0.85,
+          "quote": "Interior living room. A water line is visible on the drywall about 14 inches above the floor."
+        },
+        {
+          "id": "doc-interior-photo#f2",
+          "docId": "doc-interior-photo",
+          "type": "damage",
+          "label": "Interior water damage",
+          "value": "soaked",
+          "normalized": "interior_water_damage",
+          "confidence": 0.85,
+          "quote": "Carpet is soaked, the couch is water-damaged, and a box fan is drying the room."
+        }
+      ],
+      "method": "rules"
+    },
+    {
+      "docId": "doc-estimate",
+      "evidenceTypes": [
+        "repair_estimate"
+      ],
+      "facts": [
+        {
+          "id": "doc-estimate#f1",
+          "docId": "doc-estimate",
+          "type": "person",
+          "label": "Person named",
+          "value": "Ana Reyes",
+          "confidence": 0.92,
+          "quote": "Customer: Ana Reyes"
+        },
+        {
+          "id": "doc-estimate#f2",
+          "docId": "doc-estimate",
+          "type": "address",
+          "label": "Property address",
+          "value": "1847 Cypress Bayou Ln, Houston, TX 77093",
+          "normalized": "1847 cypress bayou ln, hou",
+          "confidence": 0.95,
+          "quote": "Property: 1847 Cypress Bayou Ln, Houston, TX 77093"
+        },
+        {
+          "id": "doc-estimate#f3",
+          "docId": "doc-estimate",
+          "type": "money",
+          "label": "Repair estimate total",
+          "value": "$14,850.00",
+          "normalized": "14850.00",
+          "confidence": 0.97,
+          "quote": "TOTAL ............................................ $14,850.00"
+        },
+        {
+          "id": "doc-estimate#f4",
+          "docId": "doc-estimate",
+          "type": "money",
+          "label": "Interior repair line items",
+          "value": "$1,630.00",
+          "normalized": "1630.00",
+          "confidence": 0.85,
+          "quote": "Interior drywall cut and replace (4 ft) .......... $1,630.00"
+        },
+        {
+          "id": "doc-estimate#f5",
+          "docId": "doc-estimate",
+          "type": "damage",
+          "label": "Roof damage",
+          "value": "wind damage to roof",
+          "normalized": "roof_damage",
+          "confidence": 0.9,
+          "quote": "Cause noted by estimator: wind damage to roof, rain intrusion to living room."
+        },
+        {
+          "id": "doc-estimate#f6",
+          "docId": "doc-estimate",
+          "type": "damage",
+          "label": "Interior water damage",
+          "value": "rain intrusion to living room",
+          "normalized": "interior_water_damage",
+          "confidence": 0.85,
+          "quote": "Cause noted by estimator: wind damage to roof, rain intrusion to living room."
+        }
+      ],
+      "method": "rules"
+    },
+    {
+      "docId": "doc-fema-letter",
+      "evidenceTypes": [
+        "fema_determination"
+      ],
+      "facts": [
+        {
+          "id": "doc-fema-letter#f1",
+          "docId": "doc-fema-letter",
+          "type": "person",
+          "label": "Person named",
+          "value": "Ana Reyes",
+          "confidence": 0.92,
+          "quote": "Applicant: Ana Reyes"
+        },
+        {
+          "id": "doc-fema-letter#f2",
+          "docId": "doc-fema-letter",
+          "type": "address",
+          "label": "Property address",
+          "value": "1847 Cypress Bayou Ln, Houston, TX 77093",
+          "normalized": "1847 cypress bayou ln, hou",
+          "confidence": 0.95,
+          "quote": "Damaged dwelling: 1847 Cypress Bayou Ln, Houston, TX 77093"
+        },
+        {
+          "id": "doc-fema-letter#f3",
+          "docId": "doc-fema-letter",
+          "type": "date_of_loss",
+          "label": "Date of loss",
+          "value": "October 9, 2026",
+          "normalized": "2026-10-09",
+          "confidence": 0.95,
+          "quote": "Date of incident: October 9, 2026"
+        },
+        {
+          "id": "doc-fema-letter#f4",
+          "docId": "doc-fema-letter",
+          "type": "deadline",
+          "label": "Letter date (appeal clock starts)",
+          "value": "October 28, 2026",
+          "normalized": "fema_letter_date:2026-10-28",
+          "confidence": 0.95,
+          "quote": "Date of letter: October 28, 2026"
+        },
+        {
+          "id": "doc-fema-letter#f5",
+          "docId": "doc-fema-letter",
+          "type": "fema_registration",
+          "label": "FEMA registration ID",
+          "value": "9271-55310",
+          "normalized": "9271-55310",
+          "confidence": 0.9,
+          "quote": "FEMA Registration ID: 9271-55310"
+        },
+        {
+          "id": "doc-fema-letter#f6",
+          "docId": "doc-fema-letter",
+          "type": "determination",
+          "label": "FEMA decision",
+          "value": "INELIGIBLE: Insufficient Information",
+          "normalized": "fema_ineligible_info",
+          "confidence": 0.95,
+          "quote": "Decision: INELIGIBLE — Insufficient Information."
+        },
+        {
+          "id": "doc-fema-letter#f7",
+          "docId": "doc-fema-letter",
+          "type": "determination",
+          "label": "Missing for FEMA",
+          "value": "Proof of occupancy",
+          "normalized": "missing:proof_of_occupancy",
+          "confidence": 0.95,
+          "quote": "Reason: We could not verify that you lived in the damaged home as your primary residence"
+        }
+      ],
+      "method": "rules"
+    },
+    {
+      "docId": "doc-insurance-email",
+      "evidenceTypes": [
+        "insurance_correspondence"
+      ],
+      "facts": [
+        {
+          "id": "doc-insurance-email#f1",
+          "docId": "doc-insurance-email",
+          "type": "person",
+          "label": "Person named",
+          "value": "Anna Reyes-Ortega",
+          "confidence": 0.92,
+          "quote": "Dear Anna Reyes-Ortega,"
+        },
+        {
+          "id": "doc-insurance-email#f2",
+          "docId": "doc-insurance-email",
+          "type": "date_of_loss",
+          "label": "Date of loss",
+          "value": "October 10, 2026",
+          "normalized": "2026-10-10",
+          "confidence": 0.95,
+          "quote": "We have opened claim HO-TX-26-118204 under policy HO3-5531907 for date of loss October 10, 2026."
+        },
+        {
+          "id": "doc-insurance-email#f3",
+          "docId": "doc-insurance-email",
+          "type": "deadline",
+          "label": "Documents due to insurer",
+          "value": "November 24, 2026",
+          "normalized": "insurance_due:2026-11-24",
+          "confidence": 0.9,
+          "quote": "Please upload your contractor estimate and photos of the damage by November 24, 2026."
+        },
+        {
+          "id": "doc-insurance-email#f4",
+          "docId": "doc-insurance-email",
+          "type": "appointment",
+          "label": "Adjuster inspection",
+          "value": "November 20, 2026 at 10:00 AM",
+          "normalized": "2026-11-20",
+          "confidence": 0.92,
+          "quote": "An adjuster inspection is scheduled for November 20, 2026 at 10:00 AM."
+        },
+        {
+          "id": "doc-insurance-email#f5",
+          "docId": "doc-insurance-email",
+          "type": "money",
+          "label": "Hurricane deductible",
+          "value": "$4,200",
+          "normalized": "4200",
+          "confidence": 0.93,
+          "quote": "Wind and wind-driven rain damage may be covered subject to your hurricane deductible of $4,200."
+        },
+        {
+          "id": "doc-insurance-email#f6",
+          "docId": "doc-insurance-email",
+          "type": "claim_number",
+          "label": "Insurance claim number",
+          "value": "HO-TX-26-118204",
+          "normalized": "HO-TX-26-118204",
+          "confidence": 0.9,
+          "quote": "Subject: RE: Claim HO-TX-26-118204"
+        },
+        {
+          "id": "doc-insurance-email#f7",
+          "docId": "doc-insurance-email",
+          "type": "claim_number",
+          "label": "Insurance claim number",
+          "value": "HO-TX-26-118204",
+          "normalized": "HO-TX-26-118204",
+          "confidence": 0.9,
+          "quote": "We have opened claim HO-TX-26-118204 under policy HO3-5531907 for date of loss October 10, 2026."
+        },
+        {
+          "id": "doc-insurance-email#f8",
+          "docId": "doc-insurance-email",
+          "type": "policy_number",
+          "label": "Policy number",
+          "value": "HO3-5531907",
+          "normalized": "HO3-5531907",
+          "confidence": 0.9,
+          "quote": "We have opened claim HO-TX-26-118204 under policy HO3-5531907 for date of loss October 10, 2026."
+        },
+        {
+          "id": "doc-insurance-email#f9",
+          "docId": "doc-insurance-email",
+          "type": "exclusion",
+          "label": "Policy exclusion",
+          "value": "Flood / rising water excluded",
+          "normalized": "flood_excluded",
+          "confidence": 0.9,
+          "quote": "Please note: damage caused by flood or rising water is excluded under your homeowners policy."
+        }
+      ],
+      "method": "rules"
+    },
+    {
+      "docId": "doc-voice-note",
+      "evidenceTypes": [
+        "loss_statement"
+      ],
+      "facts": [
+        {
+          "id": "doc-voice-note#f1",
+          "docId": "doc-voice-note",
+          "type": "person",
+          "label": "Person named",
+          "value": "Ana Reyes",
+          "confidence": 0.92,
+          "quote": "Hola, soy Ana Reyes. Se fue la luz cuatro días después del huracán y perdimos toda la comida"
+        },
+        {
+          "id": "doc-voice-note#f2",
+          "docId": "doc-voice-note",
+          "type": "person",
+          "label": "Household member (mother)",
+          "value": "Carmen Ortega",
+          "normalized": "role:mother",
+          "confidence": 0.85,
+          "quote": "Mi mamá, Carmen Ortega, tiene 71 años y usa un concentrador de oxígeno que necesita electricidad."
+        },
+        {
+          "id": "doc-voice-note#f3",
+          "docId": "doc-voice-note",
+          "type": "person",
+          "label": "Household member (son)",
+          "value": "Luis (age 16)",
+          "normalized": "role:son",
+          "confidence": 0.8,
+          "quote": "Mi hijo Luis tiene 16 años y vive con nosotras."
+        },
+        {
+          "id": "doc-voice-note#f4",
+          "docId": "doc-voice-note",
+          "type": "money",
+          "label": "Food lost in outage (estimated)",
+          "value": "$380",
+          "normalized": "380",
+          "confidence": 0.8,
+          "quote": "del refrigerador, como 380 dólares. No guardé los recibos de la comida."
+        },
+        {
+          "id": "doc-voice-note#f5",
+          "docId": "doc-voice-note",
+          "type": "need",
+          "label": "Power-dependent medical equipment",
+          "value": "Oxygen concentrator (Carmen, 71)",
+          "normalized": "medical_power",
+          "confidence": 0.9,
+          "quote": "Mi mamá, Carmen Ortega, tiene 71 años y usa un concentrador de oxígeno que necesita electricidad."
+        },
+        {
+          "id": "doc-voice-note#f6",
+          "docId": "doc-voice-note",
+          "type": "need",
+          "label": "Food loss from outage",
+          "value": "Refrigerated food lost (4-day outage)",
+          "normalized": "food_loss",
+          "confidence": 0.88,
+          "quote": "Hola, soy Ana Reyes. Se fue la luz cuatro días después del huracán y perdimos toda la comida"
+        },
+        {
+          "id": "doc-voice-note#f7",
+          "docId": "doc-voice-note",
+          "type": "mentions_evidence",
+          "label": "No receipts kept",
+          "value": "Food receipts not available",
+          "normalized": "absent:loss_receipts",
+          "confidence": 0.8,
+          "quote": "del refrigerador, como 380 dólares. No guardé los recibos de la comida."
+        },
+        {
+          "id": "doc-voice-note#f8",
+          "docId": "doc-voice-note",
+          "type": "mentions_evidence",
+          "label": "Has a utility bill (not uploaded)",
+          "value": "September electric bill in email",
+          "normalized": "has:proof_of_occupancy",
+          "confidence": 0.82,
+          "quote": "La factura de la luz de septiembre la tengo en mi correo electrónico, pero no la he imprimido."
+        }
+      ],
+      "method": "rules"
+    }
+  ],
+  "people": [
+    {
+      "name": "Ana Reyes",
+      "aliases": [
+        "Anna Reyes-Ortega"
+      ],
+      "role": "Head of household",
+      "sourceDocs": [
+        "doc-estimate",
+        "doc-fema-letter",
+        "doc-insurance-email",
+        "doc-voice-note"
+      ]
+    },
+    {
+      "name": "Carmen Ortega",
+      "aliases": [],
+      "role": "Mother, 71, uses oxygen",
+      "sourceDocs": [
+        "doc-voice-note"
+      ]
+    },
+    {
+      "name": "Luis",
+      "aliases": [],
+      "role": "Son, 16",
+      "sourceDocs": [
+        "doc-voice-note"
+      ]
+    }
+  ],
+  "needs": [
+    {
+      "key": "medical_power",
+      "label": "Oxygen concentrator needs reliable power",
+      "urgency": "critical",
+      "supportedBy": [
+        "doc-voice-note#f5"
+      ]
+    },
+    {
+      "key": "roof_damage",
+      "label": "Roof wind damage (tarped, not repaired)",
+      "urgency": "high",
+      "supportedBy": [
+        "doc-roof-photo#f2",
+        "doc-roof-photo#f3",
+        "doc-estimate#f5"
+      ]
+    },
+    {
+      "key": "fema_denial",
+      "label": "FEMA said ineligible: occupancy not verified",
+      "urgency": "high",
+      "supportedBy": [
+        "doc-fema-letter#f6"
+      ]
+    },
+    {
+      "key": "interior_water_damage",
+      "label": "Living room water damage",
+      "urgency": "medium",
+      "supportedBy": [
+        "doc-interior-photo#f1",
+        "doc-interior-photo#f2",
+        "doc-estimate#f6"
+      ]
+    },
+    {
+      "key": "food_loss",
+      "label": "Food lost in 4-day outage",
+      "urgency": "medium",
+      "supportedBy": [
+        "doc-voice-note#f6"
+      ]
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "conflict-date-of-loss",
+      "field": "Date of loss",
+      "values": [
+        {
+          "value": "October 9, 2026",
+          "docId": "doc-fema-letter",
+          "quote": "Date of incident: October 9, 2026"
+        },
+        {
+          "value": "October 10, 2026",
+          "docId": "doc-insurance-email",
+          "quote": "We have opened claim HO-TX-26-118204 under policy HO3-5531907 for date of loss October 10, 2026."
+        }
+      ],
+      "impact": "Insurer and FEMA records disagree. Mismatched dates can delay a claim review.",
+      "question": {
+        "en": "Which day did the damage happen? FEMA has October 9 and the insurer has October 10.",
+        "es": "¿Qué día ocurrió el daño? FEMA tiene el 9 de octubre y la aseguradora tiene el 10 de octubre."
+      }
+    },
+    {
+      "id": "conflict-name",
+      "field": "Policyholder name",
+      "values": [
+        {
+          "value": "Ana Reyes",
+          "docId": "doc-estimate",
+          "quote": "Customer: Ana Reyes"
+        },
+        {
+          "value": "Anna Reyes-Ortega",
+          "docId": "doc-insurance-email",
+          "quote": "Dear Anna Reyes-Ortega,"
+        }
+      ],
+      "impact": "The same person appears under different spellings. Insurers may ask for ID to match records.",
+      "question": {
+        "en": "Is your legal name Ana Reyes or Anna Reyes-Ortega? We'll ask the insurer to correct it.",
+        "es": "¿Su nombre legal es Ana Reyes o Anna Reyes-Ortega? Le pediremos a la aseguradora que lo corrija."
+      }
+    }
+  ],
+  "matches": [
+    {
+      "programId": "insurance-claim",
+      "name": "Homeowners insurance claim (wind damage)",
+      "status": "possible_match",
+      "reasons": [
+        "Wind damage to roof documented in photos and estimate",
+        "Deadline 2026-11-24 (6 days left): Due date stated in the insurer's email"
+      ],
+      "evidence": [
+        {
+          "type": "damage_photo",
+          "label": "Photos of the damage",
+          "satisfiedBy": [
+            "doc-roof-photo",
+            "doc-interior-photo"
+          ]
+        },
+        {
+          "type": "repair_estimate",
+          "label": "Contractor repair estimate",
+          "satisfiedBy": [
+            "doc-estimate"
+          ]
+        },
+        {
+          "type": "insurance_correspondence",
+          "label": "Insurance claim letter or email",
+          "satisfiedBy": [
+            "doc-insurance-email"
+          ]
+        }
+      ],
+      "readiness": 1,
+      "deadline": {
+        "date": "2026-11-24",
+        "basis": "Due date stated in the insurer's email"
+      },
+      "nextAction": "Send the estimate and photos to the adjuster before the inspection.",
+      "blocked": false,
+      "blockedBy": [],
+      "source": {
+        "label": "Texas Department of Insurance",
+        "url": "https://www.tdi.texas.gov"
+      },
+      "caveat": "Possible match. Coverage depends on the policy. TDI can help if the household has a dispute."
+    },
+    {
+      "programId": "fema-appeal",
+      "name": "FEMA Individual Assistance appeal",
+      "status": "possible_match",
+      "reasons": [
+        "FEMA letter says ineligible for insufficient information",
+        "Deadline 2026-12-27 (39 days left): 60 days from the date on the FEMA letter"
+      ],
+      "evidence": [
+        {
+          "type": "fema_determination",
+          "label": "FEMA decision letter",
+          "satisfiedBy": [
+            "doc-fema-letter"
+          ]
+        },
+        {
+          "type": "proof_of_occupancy",
+          "label": "Proof of occupancy (utility bill, lease, or bank statement)",
+          "satisfiedBy": [],
+          "hint": "September electric bill in email"
+        },
+        {
+          "type": "damage_photo",
+          "label": "Photos of the damage",
+          "satisfiedBy": [
+            "doc-roof-photo",
+            "doc-interior-photo"
+          ]
+        },
+        {
+          "type": "repair_estimate",
+          "label": "Contractor repair estimate",
+          "satisfiedBy": [
+            "doc-estimate"
+          ]
+        }
+      ],
+      "readiness": 0.75,
+      "deadline": {
+        "date": "2026-12-27",
+        "basis": "60 days from the date on the FEMA letter"
+      },
+      "nextAction": "Prepare a signed appeal letter with proof of occupancy attached.",
+      "blocked": true,
+      "blockedBy": [
+        "Proof of occupancy (utility bill, lease, or bank statement)"
+      ],
+      "source": {
+        "label": "FEMA: Individual Assistance",
+        "url": "https://www.fema.gov/assistance/individual"
+      },
+      "caveat": "Possible match. FEMA decides eligibility. Check the appeal instructions in the household's own letter."
+    },
+    {
+      "programId": "sba-home-loan",
+      "name": "SBA disaster home loan",
+      "status": "possible_match",
+      "reasons": [
+        "Repair estimate is larger than what insurance is likely to pay"
+      ],
+      "evidence": [
+        {
+          "type": "repair_estimate",
+          "label": "Contractor repair estimate",
+          "satisfiedBy": [
+            "doc-estimate"
+          ]
+        },
+        {
+          "type": "insurance_correspondence",
+          "label": "Insurance claim letter or email",
+          "satisfiedBy": [
+            "doc-insurance-email"
+          ]
+        },
+        {
+          "type": "proof_of_identity",
+          "label": "Photo ID",
+          "satisfiedBy": []
+        }
+      ],
+      "readiness": 0.6666666666666666,
+      "nextAction": "Talk with the family about whether a loan fits. Do not apply without their decision.",
+      "blocked": true,
+      "blockedBy": [
+        "Photo ID"
+      ],
+      "source": {
+        "label": "SBA: Disaster assistance",
+        "url": "https://www.sba.gov/funding-programs/disaster-assistance"
+      },
+      "caveat": "Possible match. A loan must be repaid. The household decides whether to apply."
+    },
+    {
+      "programId": "critical-care",
+      "name": "Critical care electric customer designation",
+      "status": "possible_match",
+      "reasons": [
+        "Household member uses an oxygen concentrator"
+      ],
+      "evidence": [
+        {
+          "type": "medical_need_documentation",
+          "label": "Medical documentation of power-dependent equipment",
+          "satisfiedBy": []
+        }
+      ],
+      "readiness": 0,
+      "nextAction": "Ask Carmen's doctor to fill out the provider's critical care form.",
+      "blocked": true,
+      "blockedBy": [
+        "Medical documentation of power-dependent equipment"
+      ],
+      "source": {
+        "label": "Public Utility Commission of Texas",
+        "url": "https://www.puc.texas.gov"
+      },
+      "caveat": "Possible match. A designation does not guarantee power during an outage. Keep a backup plan."
+    },
+    {
+      "programId": "food-assistance",
+      "name": "Food and immediate-needs referral (2-1-1 Texas)",
+      "status": "possible_match",
+      "reasons": [
+        "Household lost refrigerated food during the outage"
+      ],
+      "evidence": [
+        {
+          "type": "loss_statement",
+          "label": "Statement describing losses",
+          "satisfiedBy": [
+            "doc-voice-note"
+          ]
+        }
+      ],
+      "readiness": 1,
+      "nextAction": "Draft a referral message to a nearby food pantry partner.",
+      "blocked": false,
+      "blockedBy": [],
+      "source": {
+        "label": "2-1-1 Texas",
+        "url": "https://www.211texas.org"
+      },
+      "caveat": "Referral only. Disaster food benefits are available only when the state activates them."
+    }
+  ],
+  "evidenceScore": 63,
+  "followUp": {
+    "evidence": "proof_of_occupancy",
+    "unblocks": [
+      "fema-appeal"
+    ],
+    "en": "You mentioned your September electric bill is in your email. Can you forward it to us? FEMA needs it to show you lived at 1847 Cypress Bayou Ln before the storm.",
+    "es": "Usted mencionó que tiene la factura de la luz de septiembre en su correo. ¿Nos la puede reenviar? FEMA la necesita para comprobar que vivía en 1847 Cypress Bayou Ln antes del huracán.",
+    "why": "Unblocks 1 pathway. The household already mentioned having it (September electric bill in email)."
+  },
+  "plan": [
+    {
+      "id": "task:critical-care",
+      "title": "Get Carmen's doctor to sign the critical care form",
+      "owner": "Navigator",
+      "priority": 0,
+      "programId": "critical-care",
+      "status": "blocked",
+      "detail": "Her oxygen concentrator needs power. Also make a backup plan for the next outage."
+    },
+    {
+      "id": "task:conflict-date-of-loss",
+      "title": "Resolve conflict: Date of loss",
+      "owner": "Household",
+      "priority": 1,
+      "status": "ready",
+      "detail": "Which day did the damage happen? FEMA has October 9 and the insurer has October 10."
+    },
+    {
+      "id": "task:conflict-name",
+      "title": "Resolve conflict: Policyholder name",
+      "owner": "Household",
+      "priority": 1,
+      "status": "ready",
+      "detail": "Is your legal name Ana Reyes or Anna Reyes-Ortega? We'll ask the insurer to correct it."
+    },
+    {
+      "id": "task:collect:proof_of_occupancy",
+      "title": "Collect: Proof of occupancy (utility bill, lease, or bank statement)",
+      "owner": "Household",
+      "priority": 1,
+      "status": "ready",
+      "detail": "Unblocks 1 pathway. The household already mentioned having it (September electric bill in email)."
+    },
+    {
+      "id": "task:insurance-claim",
+      "title": "Send the estimate and photos to the adjuster before the inspection.",
+      "owner": "BayouBridge",
+      "due": "2026-11-24",
+      "priority": 2.06,
+      "programId": "insurance-claim",
+      "status": "needs_approval",
+      "detail": "Packet is ready. A navigator must approve before anything is sent.",
+      "requiresApproval": true
+    },
+    {
+      "id": "task:fema-appeal",
+      "title": "Prepare a signed appeal letter with proof of occupancy attached.",
+      "owner": "BayouBridge",
+      "due": "2026-12-27",
+      "priority": 2.39,
+      "programId": "fema-appeal",
+      "status": "blocked",
+      "detail": "Waiting on: Proof of occupancy (utility bill, lease, or bank statement)",
+      "requiresApproval": true
+    },
+    {
+      "id": "task:sba-home-loan",
+      "title": "Talk with the family about whether a loan fits. Do not apply without their decision.",
+      "owner": "Navigator",
+      "priority": 2.9,
+      "programId": "sba-home-loan",
+      "status": "blocked",
+      "detail": "Waiting on: Photo ID"
+    },
+    {
+      "id": "task:food-assistance",
+      "title": "Draft a referral message to a nearby food pantry partner.",
+      "owner": "BayouBridge",
+      "priority": 2.9,
+      "programId": "food-assistance",
+      "status": "needs_approval",
+      "detail": "Packet is ready. A navigator must approve before anything is sent.",
+      "requiresApproval": true
+    }
+  ],
+  "packets": [
+    {
+      "id": "packet:insurance-claim",
+      "programId": "insurance-claim",
+      "title": "Homeowners insurance claim (wind damage): packet",
+      "to": "Private insurer",
+      "summary": "3 of 3 required documents attached, 5 cited facts. Send the estimate and photos to the adjuster before the inspection.",
+      "attachments": [
+        {
+          "docId": "doc-roof-photo",
+          "title": "Roof damage photo"
+        },
+        {
+          "docId": "doc-interior-photo",
+          "title": "Living room water damage photo"
+        },
+        {
+          "docId": "doc-estimate",
+          "title": "Contractor repair estimate"
+        },
+        {
+          "docId": "doc-insurance-email",
+          "title": "Insurance adjuster email"
+        }
+      ],
+      "citations": [
+        {
+          "factId": "doc-roof-photo#f2",
+          "quote": "Roof: large section of missing shingles on the north slope, exposed wood decking.",
+          "docId": "doc-roof-photo"
+        },
+        {
+          "factId": "doc-interior-photo#f1",
+          "quote": "Interior living room. A water line is visible on the drywall about 14 inches above the floor.",
+          "docId": "doc-interior-photo"
+        },
+        {
+          "factId": "doc-interior-photo#f2",
+          "quote": "Carpet is soaked, the couch is water-damaged, and a box fan is drying the room.",
+          "docId": "doc-interior-photo"
+        },
+        {
+          "factId": "doc-estimate#f5",
+          "quote": "Cause noted by estimator: wind damage to roof, rain intrusion to living room.",
+          "docId": "doc-estimate"
+        },
+        {
+          "factId": "doc-insurance-email#f3",
+          "quote": "Please upload your contractor estimate and photos of the damage by November 24, 2026.",
+          "docId": "doc-insurance-email"
+        }
+      ],
+      "bilingualCover": {
+        "en": "To Private insurer: on behalf of the Reyes household at 1847 Cypress Bayou Ln, Houston, TX 77093, we are sending 4 documents for the Homeowners insurance claim (wind damage): Roof damage photo, Living room water damage photo, Contractor repair estimate and Insurance adjuster email. The deadline we have on file is 2026-11-24. Please let us know if you need anything else. Prepared by a community disaster-recovery navigator and reviewed before sending.",
+        "es": "Para Private insurer: en nombre del hogar (Reyes household) en 1847 Cypress Bayou Ln, Houston, TX 77093, enviamos 4 documentos para Homeowners insurance claim (wind damage): Roof damage photo, Living room water damage photo, Contractor repair estimate y Insurance adjuster email. La fecha límite que tenemos es 2026-11-24. Avísenos si necesita algo más. Preparado por un navegador comunitario de recuperación y revisado antes de enviar."
+      },
+      "status": "draft"
+    },
+    {
+      "id": "packet:food-assistance",
+      "programId": "food-assistance",
+      "title": "Food and immediate-needs referral (2-1-1 Texas): packet",
+      "to": "2-1-1 Texas / United Way",
+      "summary": "1 of 1 required documents attached, 1 cited facts. Draft a referral message to a nearby food pantry partner.",
+      "attachments": [
+        {
+          "docId": "doc-voice-note",
+          "title": "Voice note from Ana (Spanish)"
+        }
+      ],
+      "citations": [
+        {
+          "factId": "doc-voice-note#f6",
+          "quote": "Hola, soy Ana Reyes. Se fue la luz cuatro días después del huracán y perdimos toda la comida",
+          "docId": "doc-voice-note"
+        }
+      ],
+      "bilingualCover": {
+        "en": "To 2-1-1 Texas / United Way: on behalf of the Reyes household at 1847 Cypress Bayou Ln, Houston, TX 77093, we are sending 1 document for the Food and immediate-needs referral (2-1-1 Texas): Voice note from Ana (Spanish). Please let us know if you need anything else. Prepared by a community disaster-recovery navigator and reviewed before sending.",
+        "es": "Para 2-1-1 Texas / United Way: en nombre del hogar (Reyes household) en 1847 Cypress Bayou Ln, Houston, TX 77093, enviamos 1 documento para Food and immediate-needs referral (2-1-1 Texas): Voice note from Ana (Spanish). Avísenos si necesita algo más. Preparado por un navegador comunitario de recuperación y revisado antes de enviar."
+      },
+      "status": "draft"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "doc-roof-photo",
+        "kind": "document",
+        "label": "Roof damage photo",
+        "sub": "IMG_2041.jpg"
+      },
+      {
+        "id": "doc-interior-photo",
+        "kind": "document",
+        "label": "Living room water damage photo",
+        "sub": "IMG_2057.jpg"
+      },
+      {
+        "id": "doc-estimate",
+        "kind": "document",
+        "label": "Contractor repair estimate",
+        "sub": "Estimate_E-2291.pdf"
+      },
+      {
+        "id": "doc-fema-letter",
+        "kind": "document",
+        "label": "FEMA decision letter",
+        "sub": "FEMA_Letter_Oct28.pdf"
+      },
+      {
+        "id": "doc-insurance-email",
+        "kind": "document",
+        "label": "Insurance adjuster email",
+        "sub": "RE_Claim_HO-TX-26-118204.eml"
+      },
+      {
+        "id": "doc-voice-note",
+        "kind": "document",
+        "label": "Voice note from Ana (Spanish)",
+        "sub": "nota_de_voz_ana.m4a"
+      },
+      {
+        "id": "need:medical_power",
+        "kind": "need",
+        "label": "Oxygen concentrator needs reliable power",
+        "sub": "critical"
+      },
+      {
+        "id": "need:roof_damage",
+        "kind": "need",
+        "label": "Roof wind damage (tarped, not repaired)",
+        "sub": "high"
+      },
+      {
+        "id": "need:fema_denial",
+        "kind": "need",
+        "label": "FEMA said ineligible: occupancy not verified",
+        "sub": "high"
+      },
+      {
+        "id": "need:interior_water_damage",
+        "kind": "need",
+        "label": "Living room water damage",
+        "sub": "medium"
+      },
+      {
+        "id": "need:food_loss",
+        "kind": "need",
+        "label": "Food lost in 4-day outage",
+        "sub": "medium"
+      },
+      {
+        "id": "program:insurance-claim",
+        "kind": "program",
+        "label": "Homeowners insurance claim (wind damage)",
+        "sub": "100% ready"
+      },
+      {
+        "id": "deadline:insurance-claim",
+        "kind": "deadline",
+        "label": "2026-11-24",
+        "sub": "Due date stated in the insurer's email"
+      },
+      {
+        "id": "program:fema-appeal",
+        "kind": "program",
+        "label": "FEMA Individual Assistance appeal",
+        "sub": "75% ready"
+      },
+      {
+        "id": "missing:proof_of_occupancy",
+        "kind": "missing",
+        "label": "Proof of occupancy (utility bill, lease, or bank statement)",
+        "sub": "Household has it: September electric bill in email"
+      },
+      {
+        "id": "deadline:fema-appeal",
+        "kind": "deadline",
+        "label": "2026-12-27",
+        "sub": "60 days from the date on the FEMA letter"
+      },
+      {
+        "id": "program:sba-home-loan",
+        "kind": "program",
+        "label": "SBA disaster home loan",
+        "sub": "67% ready"
+      },
+      {
+        "id": "missing:proof_of_identity",
+        "kind": "missing",
+        "label": "Photo ID",
+        "sub": "Not on file"
+      },
+      {
+        "id": "program:critical-care",
+        "kind": "program",
+        "label": "Critical care electric customer designation",
+        "sub": "0% ready"
+      },
+      {
+        "id": "missing:medical_need_documentation",
+        "kind": "missing",
+        "label": "Medical documentation of power-dependent equipment",
+        "sub": "Not on file"
+      },
+      {
+        "id": "program:food-assistance",
+        "kind": "program",
+        "label": "Food and immediate-needs referral (2-1-1 Texas)",
+        "sub": "100% ready"
+      }
+    ],
+    "edges": [
+      {
+        "from": "doc-voice-note",
+        "to": "need:medical_power",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-roof-photo",
+        "to": "need:roof_damage",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-estimate",
+        "to": "need:roof_damage",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-fema-letter",
+        "to": "need:fema_denial",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-interior-photo",
+        "to": "need:interior_water_damage",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-estimate",
+        "to": "need:interior_water_damage",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-voice-note",
+        "to": "need:food_loss",
+        "relation": "supports"
+      },
+      {
+        "from": "need:roof_damage",
+        "to": "program:insurance-claim",
+        "relation": "supports"
+      },
+      {
+        "from": "need:interior_water_damage",
+        "to": "program:insurance-claim",
+        "relation": "supports"
+      },
+      {
+        "from": "doc-insurance-email",
+        "to": "program:insurance-claim",
+        "relation": "supports"
+      },
+      {
+        "from": "program:insurance-claim",
+        "to": "deadline:insurance-claim",
+        "relation": "due"
+      },
+      {
+        "from": "need:fema_denial",
+        "to": "program:fema-appeal",
+        "relation": "supports"
+      },
+      {
+        "from": "need:roof_damage",
+        "to": "program:fema-appeal",
+        "relation": "supports"
+      },
+      {
+        "from": "missing:proof_of_occupancy",
+        "to": "program:fema-appeal",
+        "relation": "blocks"
+      },
+      {
+        "from": "program:fema-appeal",
+        "to": "deadline:fema-appeal",
+        "relation": "due"
+      },
+      {
+        "from": "need:roof_damage",
+        "to": "program:sba-home-loan",
+        "relation": "supports"
+      },
+      {
+        "from": "need:interior_water_damage",
+        "to": "program:sba-home-loan",
+        "relation": "supports"
+      },
+      {
+        "from": "missing:proof_of_identity",
+        "to": "program:sba-home-loan",
+        "relation": "blocks"
+      },
+      {
+        "from": "need:medical_power",
+        "to": "program:critical-care",
+        "relation": "supports"
+      },
+      {
+        "from": "missing:medical_need_documentation",
+        "to": "program:critical-care",
+        "relation": "blocks"
+      },
+      {
+        "from": "need:food_loss",
+        "to": "program:food-assistance",
+        "relation": "supports"
+      }
+    ]
+  },
+  "events": [
+    "[Coordinator] Started case run: 6 documents queued. 15 tasks in the graph.",
+    "[Evidence Agent] Read IMG_2041.jpg: 3 facts extracted (rules). Classified as: damage photo.",
+    "[Evidence Agent] Read IMG_2057.jpg: 2 facts extracted (rules). Classified as: damage photo.",
+    "[Evidence Agent] Read Estimate_E-2291.pdf: 6 facts extracted (rules). Classified as: repair estimate.",
+    "[Evidence Agent] Read FEMA_Letter_Oct28.pdf: 7 facts extracted (rules). Classified as: fema determination.",
+    "[Evidence Agent] Read RE_Claim_HO-TX-26-118204.eml: 9 facts extracted (rules). Classified as: insurance correspondence.",
+    "[Evidence Agent] Read nota_de_voz_ana.m4a: 8 facts extracted (rules). Classified as: loss statement.",
+    "[Evidence Agent] Resolved people: 3 household members found. \"Anna Reyes-Ortega\" matched to Ana Reyes",
+    "[Coordinator] Built needs list: Oxygen concentrator needs reliable power (critical) · Roof wind damage (tarped, not repaired) (high) · FEMA said ineligible: occupancy not verified (high) · Living room water damage (medium) · Food lost in 4-day outage (medium)",
+    "[Evidence Agent] Checked for conflicts: Date of loss, Policyholder name disagree across documents.",
+    "[Recovery-Match Agent] Matched recovery pathways: 5 possible matches from the verified source list: Homeowners insurance claim (wind damage), FEMA Individual Assistance appeal, SBA disaster home loan, Critical care electric customer designation, Food and immediate-needs referral (2-1-1 Texas).",
+    "[Follow-up Agent] Scored evidence: 63% of required evidence is on file. Best next ask: proof of occupancy.",
+    "[Coordinator] Built recovery plan: 8 tasks, 3 blocked on missing evidence.",
+    "[Packet Agent] Drafted packet for Homeowners insurance claim (wind damage): 4 attachments, 5 cited facts, English and Spanish cover note. Held as a draft.",
+    "[Packet Agent] Drafted packet for Food and immediate-needs referral (2-1-1 Texas): 1 attachment, 1 cited fact, English and Spanish cover note. Held as a draft.",
+    "[Coordinator] Updated recovery graph: 21 nodes, 21 links.",
+    "[Safety Agent] Applied approval gates: 2 outbound actions held for navigator approval. Nothing is sent or submitted automatically.",
+    "[Coordinator] Run complete: About 142 minutes of manual casework done (estimate)."
+  ],
+  "minutesSaved": 142,
+  "extraction": {
+    "claude": 0,
+    "rules": 6,
+    "fellBack": 0,
+    "mode": "rules"
+  }
+}
