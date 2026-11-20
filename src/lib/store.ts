@@ -142,7 +142,8 @@ export function resolveConflict(caseId: string, conflictId: string, value: strin
   const conflict = rec.state.conflicts.find((c) => c.id === conflictId);
   if (!conflict) return { ok: false, status: 404, error: "Unknown task. The plan may have changed; run the agents again." };
   if (!conflict.values.some((v) => v.value === value)) return { ok: false, status: 400, error: "Please choose one of the values your documents show." };
-  rec.resolutions[conflictId] = value;
+  // Cases kept in memory from before answers existed (a dev-server reload keeps the store) have none yet.
+  (rec.resolutions ??= {})[conflictId] = value;
   rec.state = withApprovals(rec.state, rec);
   rec.touchedAt = Date.now();
   const seq = rec.state.events.length + rec.extraEvents.length;
