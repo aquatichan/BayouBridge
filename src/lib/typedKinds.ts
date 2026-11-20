@@ -47,6 +47,10 @@ export const TYPED_KINDS: Record<TypedKind, { en: string; es: string; hint: { en
     hint: { en: "Who it is for and the equipment that needs power. For example: My mother Rosa uses an oxygen concentrator.",
       es: "Para quién es y el equipo que necesita electricidad. Por ejemplo: Mi mamá Rosa usa un concentrador de oxígeno." },
   },
+  deed: {
+    en: "Deed or mortgage statement", es: "Escritura o estado de hipoteca",
+    hint: { en: "The address of the home and whose names are on it.", es: "La dirección de la casa y a nombre de quién está." },
+  },
   receipt: {
     en: "Receipt", es: "Recibo",
     hint: { en: "What you bought or lost, the store, and the amount.", es: "Lo que compró o perdió, la tienda y la cantidad." },

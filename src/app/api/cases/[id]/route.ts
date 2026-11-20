@@ -1,3 +1,4 @@
+import { sampleFollowUps } from "@/lib/cases";
 import { deleteCase, getCase } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const rec = getCase((await params).id);
   if (!rec?.profile) return Response.json({ error: "This case has expired or was deleted." }, { status: 404 });
-  const { name, address, language, sample } = rec.profile;
-  return Response.json({ profile: { name, address, language, sample }, documents: rec.documents, state: rec.state ?? null });
+  const { name, address, language, sample, demo } = rec.profile;
+  return Response.json({ profile: { name, address, language, sample, demo }, documents: rec.documents, state: rec.state ?? null, followUps: sampleFollowUps(demo) });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import type { ActivityEvent, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { KIND_FOR_EVIDENCE } from "@/lib/typedKinds";
 import { DropZone, FilePicker, TypedDocEditor, type TypedDoc } from "./Onboarding";
+import { Folder, PaperSheet } from "./Papers";
 import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
@@ -12,7 +13,7 @@ import { STRINGS, type Lang } from "./i18n";
 
 const ICON: Record<CaseDocument["kind"], string> = {
   photo: "📷", estimate: "🧾", fema_letter: "✉️", insurance_email: "📧", voice_note: "🗣️", utility_bill: "💡",
-  bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", other: "📎",
+  bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", deed: "📜", other: "📎",
 };
 
 type Tab = "next" | "programs" | "docs" | "household" | "outbox";
@@ -23,10 +24,15 @@ function fmt(iso: string, lang: Lang) {
 
 export default function CasePanel(props: {
   s: CaseState | null; events: ActivityEvent[]; tasks: Record<string, TaskUpdate>; running: boolean; lang: Lang;
-  outbox: OutboxItem[]; sample: boolean; billPending: boolean;
+  outbox: OutboxItem[]; sample: boolean;
+  /** A sample case's documents still to come ("Your papers"), with the decoys mixed in. */
+  papers: Paper[];
+  onArrive: (docId: string) => void;
+  /** The household confirms one value of a conflict. */
+  onResolve: (conflictId: string, value: string) => void;
   /** Which extractor actually read the documents in the last run (null until a run finishes). */
   mode: ExtractionSummary | null; approving: string | null; approveError: string | null;
-  onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void; onBill: () => void;
+  onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void;
   /** The household typed out a document. */
   onType: (d: TypedDoc) => void;
   /** Files are on their way to the server (before the agents start reading). */
@@ -127,7 +133,11 @@ export default function CasePanel(props: {
               </li>))}
             </ul>
             {s.conflicts.length > 0 && <h3 className="pt-2 text-sm font-semibold text-muted">{t.conflicts}</h3>}
-            {s.conflicts.map((c) => <p key={c.id} className="rounded-xl bg-amber-soft/60 p-2.5 text-sm">{c.question[lang]}</p>)}
+            {s.conflicts.map((c) => (
+              <p key={c.id} className={`rounded-xl p-2.5 text-sm ${c.resolved ? "bg-moss/15" : "bg-amber-soft/60"}`}>
+                {c.question[lang]}{c.resolved && <b className="mt-1 block text-xs text-ink">✓ {t.confirmed}: {c.resolved}</b>}
+              </p>
+            ))}
           </>
         ) : <Waiting>{t.waitingResults}</Waiting>)}
 
@@ -147,12 +157,97 @@ export default function CasePanel(props: {
   );
 }
 
+
+/** Which evidence a plan step is waiting on (none for steps that aren't waiting on a document). */
+function missingFor(task: PlanTask, s: CaseState): { type: string; label: string }[] {
+  if (task.id.startsWith("task:collect:")) {
+    const type = task.id.slice("task:collect:".length);
+    const e = s.matches.flatMap((m) => m.evidence).find((x) => x.type === type);
+    return e ? [{ type, label: e.label }] : [];
+  }
+  if (task.status !== "blocked") return [];
+  return s.matches.find((m) => m.programId === task.programId)?.evidence.filter((e) => !e.satisfiedBy.length).map((e) => ({ type: e.type, label: e.label })) ?? [];
+}
+
+const PAPER_MIME = "text/x-bayoubridge-paper";
+
+/**
+ * "Your papers": a sample case's missing documents, mixed with a few that don't help.
+ * Drag one onto a waiting step (or tap it, then the step). The right one is added to
+ * the case and the helpers re-read it; a wrong one gets a hint about what the step needs.
+ */
+function useTray(props: { s: CaseState | null; lang: Lang; papers: Paper[]; running: boolean; onArrive: (id: string) => void }) {
+  const { s, lang, papers, running, onArrive } = props;
+  const t = STRINGS[lang];
+  const [picked, setPicked] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ taskId: string; ok: boolean; text: string } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const say = (f: { taskId: string; ok: boolean; text: string }) => {
+    setFeedback(f);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFeedback(null), f.ok ? 2500 : 5000);
+  };
+  const attach = (key: string, task: PlanTask) => {
+    if (!s || running) return;
+    setPicked(null); setOver(null);
+    const paper = papers.find((p) => p.key === key);
+    if (!paper) return;
+    const missing = missingFor(task, s);
+    if (paper.id && paper.provides && missing.some((m) => m.type === paper.provides)) {
+      say({ taskId: task.id, ok: true, text: t.rightOne });
+      onArrive(paper.id);
+    } else {
+      say({ taskId: task.id, ok: false, text: t.notQuite(paper.title, missing.map((m) => tr(m.label, lang)).join(", ")) });
+    }
+  };
+  const target = (task: PlanTask) => {
+    if (!s || !papers.some((p) => p.id) || !missingFor(task, s).length) return null;
+    return {
+      active: over === task.id,
+      picked,
+      feedback: feedback?.taskId === task.id ? feedback : null,
+      handlers: {
+        onDragOver: (e: React.DragEvent) => { if ([...e.dataTransfer.types].includes(PAPER_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(task.id); } },
+        onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null); },
+        onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(PAPER_MIME); if (k) { e.preventDefault(); attach(k, task); } },
+      },
+      attachPicked: () => picked && attach(picked, task),
+    };
+  };
+  const tray = s && papers.some((p) => p.id) ? (
+    <div className="rounded-2xl border border-amber/40 bg-amber-soft/30 p-3">
+      <h3 className="text-sm font-semibold text-ink">🗂️ {t.trayTitle}</h3>
+      <p className="mt-0.5 text-[11px] text-muted">{t.trayBody}</p>
+      <ul className="-mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1 pt-3 [scrollbar-width:thin]">
+        {papers.map((p, i) => (
+          <li key={p.key} className="shrink-0">
+            <button type="button" draggable={!running} disabled={running} aria-pressed={picked === p.key} aria-label={p.title}
+              onDragStart={(e) => { e.dataTransfer.setData(PAPER_MIME, p.key); e.dataTransfer.effectAllowed = "copy"; setPicked(p.key); }}
+              onDragEnd={() => setOver(null)}
+              onClick={() => setPicked((k) => (k === p.key ? null : p.key))}
+              className="group flex w-[84px] cursor-grab flex-col items-center gap-1 rounded-xl p-1 text-center outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-tide disabled:opacity-50">
+              <span className="transition-transform group-hover:-translate-y-1"><PaperSheet icon={p.icon} seed={i + 1} lifted={picked === p.key} /></span>
+              <span className={`line-clamp-2 text-[10px] font-medium leading-tight ${picked === p.key ? "text-tide" : "text-ink"}`}>{p.title}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : null;
+  return { tray, target };
+}
+
+export type Paper = { key: string; id?: string; provides?: string; icon: string; title: string };
+
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-function NextSteps({ s, events, running, lang, sample, billPending, approving, approveError, onApprove, onUpload, onType, uploading, onBill, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
+function NextSteps({ s, events, running, lang, sample, papers, approving, approveError, onApprove, onUpload, onType, uploading, onArrive, onResolve, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
   const t = STRINGS[lang];
+  const { tray, target } = useTray({ s, lang, papers, running, onArrive });
   const [typing, setTyping] = useState(false);
   const total = s?.documents.length ?? 0;
   const latest = events.at(-1);
@@ -182,7 +277,7 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
           <p className="mt-1 text-[11px] text-muted">{tr(s.followUp.why, lang)}</p>
           <div className="mt-2">
             {sample
-              ? billPending && <button disabled={running} onClick={onBill} className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-night disabled:opacity-50">💡 {t.billArrives}</button>
+              ? papers.some((p) => p.id) && <p className="text-xs font-medium text-amber">👇 {t.trayHint}</p>
               : (
                 <div className="flex flex-wrap gap-2">
                   <FilePicker lang={lang} onPick={onUpload} label={`📎 ${t.uploadIt}`} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white" />
@@ -200,24 +295,72 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
         </div>
       )}
 
+      {s && !running && s.plan.length > 0 && s.matches.every((m) => m.readiness === 1) && s.plan.every((x) => x.status === "done" || x.approved) && (
+        <div role="status" className="rounded-2xl border border-moss/50 bg-moss/15 p-3">
+          <h3 className="text-sm font-semibold text-ink">🎉 {t.allDoneTitle}</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink">{t.allDoneBody(s.matches.length)}</p>
+        </div>
+      )}
+
+      {sample && has("Built recovery plan") && tray}
+
       {s && has("Built recovery plan") && (
         <div>
           <h3 className="mb-1.5 text-sm font-semibold text-muted">{t.plan}</h3>
           {approveError && <p role="alert" className="mb-2 rounded-xl bg-clay-soft p-2 text-xs text-clay">{approveError}</p>}
-          <ol className="space-y-2">{s.plan.map((task) => (
-            <li key={task.id} className="rounded-2xl border border-line p-3">
+          <ol className="space-y-2">{s.plan.map((task) => {
+            const drop = sample ? target(task) : null;
+            return (
+            <li key={task.id} {...drop?.handlers}
+              className={`rounded-2xl border p-3 transition ${drop?.active ? "border-tide bg-tide/10" : drop ? "border-dashed border-amber/60" : "border-line"}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 text-sm font-semibold">{tr(task.title, lang)}</div>
                 {task.status === "blocked" && <span className="shrink-0 rounded-full bg-clay-soft px-2 py-0.5 text-[11px] text-clay">{t.blocked}</span>}
                 {task.status === "ready" && <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] text-tide">{t.ready}</span>}
+                {task.status === "done" && <span className="shrink-0 rounded-full bg-moss px-2 py-0.5 text-[11px] font-medium text-night">✓ {t.done}</span>}
               </div>
-              <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{s.conflicts.find((c) => task.id === `task:${c.id}`)?.question[lang] ?? tr(task.detail, lang)}</p>
+              {(() => {
+                const c = s.conflicts.find((x) => task.id === `task:${x.id}`);
+                if (c && task.status !== "done") {
+                  const choices = [...new Set(c.values.map((v) => v.value))];
+                  return (
+                    <>
+                      <p className="mt-0.5 text-xs text-muted">{c.question[lang]}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {choices.map((v) => (
+                          <button key={v} onClick={() => onResolve(c.id, v)} disabled={running}
+                            className="rounded-full border border-tide/60 px-3 py-1 text-xs font-semibold text-tide hover:bg-tide hover:text-night disabled:opacity-50">{t.thisOne(v)}</button>
+                        ))}
+                      </div>
+                    </>
+                  );
+                }
+                return <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{tr(task.detail, lang)}</p>;
+              })()}
               {task.status === "needs_approval" && (task.approved
                 ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-night">{t.approved}</span>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}
                   className="mt-2 rounded-full border border-tide/60 px-3 py-1 text-xs font-semibold text-tide hover:bg-tide hover:text-night disabled:opacity-50">{t.approve}</button>)}
+              {drop && !drop.feedback && (
+                <div className="mt-2 flex items-center gap-3">
+                  <button type="button" onClick={drop.attachPicked} disabled={running || !drop.picked}
+                    aria-label={drop.picked ? t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "") : t.dropPaper}
+                    className={`rounded-lg transition ${drop.picked ? "animate-pulse cursor-pointer" : "cursor-default"}`}>
+                    <Folder programId={task.id.startsWith("task:collect:") ? undefined : task.programId} open={drop.active || !!drop.picked} />
+                  </button>
+                  {drop.picked
+                    ? <button onClick={drop.attachPicked} disabled={running} className="rounded-full bg-amber px-3 py-1 text-xs font-semibold text-night disabled:opacity-50">📎 {t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "")}</button>
+                    : <p className="text-[11px] font-medium text-amber">{t.dropPaper}</p>}
+                </div>
+              )}
+              {drop?.feedback && (
+                <p role="status" className={`mt-2 rounded-lg px-2 py-1.5 text-xs ${drop.feedback.ok ? "bg-moss/20 text-ink" : "bg-clay-soft text-clay"}`}>
+                  {drop.feedback.ok ? "✓ " : ""}{drop.feedback.text}
+                </p>
+              )}
             </li>
-          ))}</ol>
+            );
+          })}</ol>
         </div>
       )}
 

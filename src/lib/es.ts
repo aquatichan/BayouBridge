@@ -29,6 +29,8 @@ const PHRASES: Record<string, string> = {
   "Send the estimate and photos to the adjuster before the inspection.": "Enviar el presupuesto y las fotos al ajustador antes de la inspección.",
   "Talk with the family about whether a loan fits. Do not apply without their decision.": "Hablar con la familia sobre si le conviene un préstamo. No solicitarlo sin su decisión.",
   "Draft a referral message to a nearby food pantry partner.": "Redactar un mensaje de referencia para un banco de comida cercano.",
+  "Decide whether a low-interest SBA loan fits your family. Nothing is sent unless you approve it.":
+    "Decidir si a su familia le conviene un préstamo de la SBA con interés bajo. No se envía nada a menos que usted lo apruebe.",
   "FEMA: Individual Assistance": "FEMA: Asistencia Individual",
   "Texas Department of Insurance": "Departamento de Seguros de Texas",
   "SBA: Disaster assistance": "SBA: Asistencia por desastre",
@@ -65,9 +67,30 @@ const PHRASES: Record<string, string> = {
   "Roof wind damage (tarped, not repaired)": "Daño al techo por el viento (con lona, sin reparar)",
   "Interior water damage": "Daño por agua dentro de la casa",
   "Food lost in power outage": "Comida perdida por el apagón",
+  "Powered medical equipment needs reliable power": "El equipo médico eléctrico necesita electricidad confiable",
   "Head of household": "Titular del hogar",
   "FEMA denied the application": "FEMA negó la solicitud",
   "letter from FEMA": "carta de FEMA",
+
+  // Document titles (the sample households)
+  "Doctor's critical care form": "Formulario de cuidado crítico del médico",
+  "Driver license": "Licencia de conducir",
+  "Kids' bedroom ceiling photo": "Foto del techo del cuarto de los niños",
+  "Spoiled food photo": "Foto de la comida echada a perder",
+  "Texas ID card": "Identificación de Texas",
+  "Pay stub": "Talón de pago",
+  "Apartment lease": "Contrato de renta del apartamento",
+  "Pediatrician's letter": "Carta del pediatra",
+  "Roof and garage photo": "Foto del techo y el garaje",
+  "Back bedroom ceiling photo": "Foto del techo del cuarto de atrás",
+  "Insurance claim letter": "Carta del seguro sobre el reclamo",
+  "Warranty deed": "Escritura de la casa",
+  "Insurance declarations page": "Página de declaraciones del seguro",
+  "Credit union statement": "Estado de cuenta de la cooperativa de crédito",
+  "This sample household's made-up documents are read by the offline rules engine, so the demo never depends on a model.":
+    "Los documentos inventados de este hogar de ejemplo los lee el motor de reglas sin conexión, así que el ejemplo nunca depende de un modelo de IA.",
+  "Please choose one of the values your documents show.": "Elija uno de los datos que muestran sus documentos.",
+  "Unknown sample household.": "No existe ese hogar de ejemplo.",
 
   // Document titles
   "Contractor estimate": "Presupuesto del contratista",
@@ -233,6 +256,9 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
     const subject = /^(Her|His|Their)$/.test(who) ? `Su ${noun}` : `${cap(art)} ${noun} de ${who.slice(0, -2)}`;
     return `${subject} necesita electricidad. Haga también un plan de respaldo para el próximo apagón.`;
   }],
+  [/^Send (.+)'s critical care form to the electric provider$/, (n) => `Enviar el formulario de cuidado crítico de ${whose(n)} al proveedor de electricidad`],
+  [/^Confirmed: (.+)$/, (v) => `Confirmado: ${v}`],
+  [/^Note from (.+)$/, (n) => `Nota de ${n}`],
   [/^Resolve conflict: (.+)$/, (f) => `Resolver diferencia: ${tr(f, "es")}`],
   [/^Collect: (.+)$/, (l) => `Conseguir: ${tr(l, "es")}`],
   [/^Waiting on: (.+)$/, (l) => `Falta: ${inside(l)}`],

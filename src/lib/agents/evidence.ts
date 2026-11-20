@@ -270,6 +270,7 @@ export function guessKind(text: string): CaseDocument["kind"] {
   if (/\bfema\b/.test(t) && /decision|eligib|registration|determinaci|registro/.test(t)) return "fema_letter";
   if (/billing period|service address|kwh|amount due|statement period|periodo de facturaci/.test(t)) return /\bbank\b|banco|account balance/.test(t) ? "bank_statement" : "utility_bill";
   if (/\blease\b|landlord|tenant|contrato de (?:renta|arrendamiento)|arrendador/.test(t)) return "lease";
+  if (/warranty deed|deed of trust|grantees?|mortgage statement|escritura/.test(t)) return "deed";
   if (/declarations? page|coverage a\b|policy period/.test(t)) return "insurance_policy";
   if (/\bclaim\b|adjuster|\breclamo\b|ajustador/.test(t)) return "insurance_email";
   if (/estimate|line items?|labor|presupuesto|cotizaci/.test(t)) return "estimate";

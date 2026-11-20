@@ -13,8 +13,12 @@ export interface ProgramRule {
   /** Which needs or case facts make this pathway worth looking at. */
   triggers: { need?: string; fact?: string; description: string }[];
   requires: { type: EvidenceType; label: string }[];
+  /** What renters need instead (they don't repair the building, so no contractor estimate). */
+  requiresForRenters?: { type: EvidenceType; label: string }[];
   deadline?: { fromFact: "fema_letter_date" | "insurance_due"; days?: number; basis: string };
   nextAction: string;
+  /** The next action as the household reads it in the app, when it differs from the caseworker's wording. */
+  nextActionHousehold?: string;
   source: { label: string; url: string };
   caveat: string;
   /** Only for households that own the home (a renter's landlord insures and repairs the building). */
@@ -49,6 +53,12 @@ export const programs: ProgramRule[] = [
       { type: "proof_of_occupancy", label: EVIDENCE_LABELS.proof_of_occupancy },
       { type: "damage_photo", label: EVIDENCE_LABELS.damage_photo },
       { type: "repair_estimate", label: EVIDENCE_LABELS.repair_estimate },
+    ],
+    requiresForRenters: [
+      { type: "fema_determination", label: EVIDENCE_LABELS.fema_determination },
+      { type: "proof_of_occupancy", label: EVIDENCE_LABELS.proof_of_occupancy },
+      { type: "damage_photo", label: EVIDENCE_LABELS.damage_photo },
+      { type: "loss_statement", label: EVIDENCE_LABELS.loss_statement },
     ],
     deadline: { fromFact: "fema_letter_date", days: 60, basis: "60 days from the date on the FEMA letter" },
     nextAction: "Prepare a signed appeal letter with proof of occupancy attached.",
@@ -89,6 +99,7 @@ export const programs: ProgramRule[] = [
       { type: "proof_of_identity", label: EVIDENCE_LABELS.proof_of_identity },
     ],
     nextAction: "Talk with the family about whether a loan fits. Do not apply without their decision.",
+    nextActionHousehold: "Decide whether a low-interest SBA loan fits your family. Nothing is sent unless you approve it.",
     source: { label: "SBA: Disaster assistance", url: "https://www.sba.gov/funding-programs/disaster-assistance" },
     caveat: "Possible match. A loan must be repaid. The household decides whether to apply.",
     ownersOnly: true, // this pathway is the home-repair loan; renters' personal-property loans are not modeled yet

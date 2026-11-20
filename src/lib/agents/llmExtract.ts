@@ -146,7 +146,7 @@ export function fromClaudeOutput(doc: CaseDocument, raw: ClaudeFact[]): Extracti
 
 const UPLOAD_KINDS = [
   "photo", "estimate", "fema_letter", "insurance_email", "utility_bill", "bank_statement", "lease",
-  "id_card", "insurance_policy", "medical_letter", "receipt", "other",
+  "id_card", "insurance_policy", "medical_letter", "receipt", "deed", "other",
 ] as const;
 
 const UploadReading = z.object({

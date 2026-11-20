@@ -1,4 +1,6 @@
-import { DEMO_TODAY, documents as sampleDocuments, followUpDocuments, household as sampleHousehold } from "@/data/household";
+import { DEMO_TODAY } from "@/data/household";
+import { isDemoId, type DemoId } from "@/data/demoList";
+import { DEMOS } from "@/data/demos";
 import { runCase, type Extractor, type RunHooks } from "@/lib/agents/coordinator";
 import { guessKind } from "@/lib/agents/evidence";
 import { extractWithClaude, readUpload } from "@/lib/agents/llmExtract";
@@ -41,11 +43,19 @@ export function createUserCase(input: { name?: unknown; address?: unknown; langu
   return createSessionCase({ name: name || (language === "es" ? "Su hogar" : "Your household"), address, language, sample: false });
 }
 
-export function createSampleCase(language: unknown): string {
+/** A private copy of one synthetic demo household (Reyes unless another is named). */
+export function createSampleCase(language: unknown, demo: unknown = "reyes"): string {
+  if (!isDemoId(demo)) throw new CaseError(400, "Unknown sample household.");
+  const d = DEMOS[demo];
   return createSessionCase(
-    { name: sampleHousehold.name, address: sampleHousehold.address, language: language === "es" ? "es" : "en", sample: true },
-    sampleDocuments.map((d) => ({ ...d, source: "sample" as const })),
+    { name: d.name, address: d.address, language: language === "es" ? "es" : "en", sample: true, demo },
+    d.documents.map((x) => ({ ...x, source: "sample" as const })),
   );
+}
+
+/** What the browser needs to act out a sample case's "a document arrives" moments. */
+export function sampleFollowUps(demo: DemoId | undefined) {
+  return demo ? DEMOS[demo].followUps.map((f) => ({ id: f.doc.id, title: f.doc.title, provides: f.provides })) : [];
 }
 
 const cleanName = (name: string) => name.split(/[\\/]/).pop()!.replace(/[^\w.\- ()]/g, "_").slice(0, 80) || "upload";
@@ -127,10 +137,11 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
   const { incremental, addDocumentIds, ...hooks } = opts;
   const rec = getCase(caseId);
   if (!rec?.profile) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
-  // The sample case can receive the synthetic follow-up documents (the "Electric bill arrives" moment).
+  // A sample case can receive its own household's synthetic follow-up documents (the "a document arrives" moments).
+  const demo = rec.profile.sample ? DEMOS[rec.profile.demo ?? "reyes"] : undefined;
   if (addDocumentIds?.length) {
-    if (!rec.profile.sample) throw new CaseError(400, "Only the sample case takes sample documents.");
-    for (const d of followUpDocuments) {
+    if (!demo) throw new CaseError(400, "Only the sample case takes sample documents.");
+    for (const { doc: d } of demo.followUps) {
       if (addDocumentIds.includes(d.id) && !rec.documents.some((x) => x.id === d.id)) rec.documents.push({ ...d, source: "sample" });
     }
   }
@@ -140,8 +151,8 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     caseId,
     householdName: p.name,
     address: p.address,
-    disaster: p.sample ? sampleHousehold.disaster : "Storm recovery case",
-    today: p.sample ? DEMO_TODAY : today(),
+    disaster: demo ? demo.disaster : "Storm recovery case",
+    today: demo ? DEMO_TODAY : today(),
     documents: rec.documents,
     reuse: incremental ? rec.state?.extractions : undefined,
     limits: SESSION_LIMITS,
@@ -155,7 +166,9 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
   };
 
   let state: CaseState;
-  if (!claudeConfigured()) state = await runCase({ ...base, ...hooks });
+  // Sample households are synthetic text written for the rules engine: they never wait on, or pay for, a model.
+  if (demo) state = await runCase({ ...base, ...hooks });
+  else if (!claudeConfigured()) state = await runCase({ ...base, ...hooks });
   else {
     try {
       state = await runCase({ ...base, ...hooks, extractor });
@@ -165,6 +178,7 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     }
   }
 
+  if (demo) state.extraction = { ...state.extraction, sample: true };
   // Say plainly which uploads couldn't be read, and why.
   const unread = state.documents.filter((d) => d.source === "upload" && !d.text.trim());
   if (unread.length) {

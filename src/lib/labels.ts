@@ -10,6 +10,7 @@ export function extractionLabel(x: ExtractionSummary): string {
 
 export function extractionTooltip(x: ExtractionSummary): string {
   const total = x.claude + x.rules;
+  if (x.sample) return "This sample household's made-up documents are read by the offline rules engine, so the demo never depends on a model.";
   if (x.mode === "claude") return "Claude read every document. Its facts were checked against the document text and backstopped by the rules engine.";
   if (x.mode === "rules" && !x.fellBack) return "No API key is set, so the offline rules engine read every document.";
   const which = x.mode === "rules" ? `All ${total} documents` : `${x.fellBack} of ${total} documents`;
