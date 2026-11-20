@@ -1,5 +1,6 @@
 import { programs } from "@/data/resources";
 import type { CaseState, Need, Packet, ProgramMatch } from "@/lib/types";
+import { tr } from "@/lib/es";
 import { NEED_EVIDENCE, PROGRAM_NEEDS } from "./recovery";
 
 // Packet Agent: drafts what would be sent for a pathway whose evidence is
@@ -8,6 +9,13 @@ import { NEED_EVIDENCE, PROGRAM_NEEDS } from "./recovery";
 
 const list = (xs: string[], and: string) =>
   xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${and} ${xs[xs.length - 1]}`;
+
+/** "Reyes household" → "del hogar Reyes"; a name the household typed stays as typed. */
+const onBehalfEs = (name: string) => {
+  if (/^(your household|su hogar)$/i.test(name)) return "de su hogar";
+  const surname = name.match(/^(.+) household$/)?.[1];
+  return surname ? `del hogar ${surname}` : `del hogar (${name})`;
+};
 
 export function buildPacket(match: ProgramMatch, state: Pick<CaseState, "documents" | "extractions" | "needs" | "householdName" | "address">): Packet {
   const program = programs.find((p) => p.id === match.programId);
@@ -50,7 +58,7 @@ export function buildPacket(match: ProgramMatch, state: Pick<CaseState, "documen
     citations,
     bilingualCover: {
       en: `To ${to}: on behalf of the ${state.householdName} at ${state.address}, we are sending ${attachments.length} document${attachments.length === 1 ? "" : "s"} for the ${match.name}: ${list(titles, "and")}.${due} Please let us know if you need anything else. Prepared by a community disaster-recovery navigator and reviewed before sending.`,
-      es: `Para ${to}: en nombre del hogar (${state.householdName}) en ${state.address}, enviamos ${attachments.length} documento${attachments.length === 1 ? "" : "s"} para ${match.name}: ${list(titles, "y")}.${dueEs} Avísenos si necesita algo más. Preparado por un navegador comunitario de recuperación y revisado antes de enviar.`,
+      es: `Para ${tr(to, "es")}: en nombre ${onBehalfEs(state.householdName)} en ${state.address}, enviamos ${attachments.length} documento${attachments.length === 1 ? "" : "s"} para ${tr(match.name, "es")}: ${list(titles.map((x) => tr(x, "es")), "y")}.${dueEs} Avísenos si necesita algo más. Preparado por un navegador comunitario de recuperación y revisado antes de enviar.`,
     },
     status: "draft",
   };
