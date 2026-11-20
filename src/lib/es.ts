@@ -1,4 +1,5 @@
 import type { Lang } from "@/components/app/i18n";
+import { TYPED_KINDS } from "@/lib/typedKinds";
 
 // Spanish for the text the agents write. The agents and the golden snapshots stay
 // in English; the screen calls tr() at render time. The exact phrases come first,
@@ -66,7 +67,7 @@ const PHRASES: Record<string, string> = {
   "Food lost in power outage": "Comida perdida por el apagón",
   "Head of household": "Titular del hogar",
   "FEMA denied the application": "FEMA negó la solicitud",
-  "FEMA letter": "carta de FEMA",
+  "letter from FEMA": "carta de FEMA",
 
   // Document titles
   "Contractor estimate": "Presupuesto del contratista",
@@ -119,6 +120,27 @@ const PHRASES: Record<string, string> = {
     "Claude leyó todos los documentos. Cada dato se comprobó con el texto del documento, y el motor de reglas revisó que no faltara nada.",
   "No API key is set, so the offline rules engine read every document.":
     "Este servidor no tiene clave de Claude, así que el motor de reglas sin conexión leyó todos los documentos.",
+
+  // Errors a person can see (src/lib/cases.ts, src/lib/store.ts, the API routes)
+  "Add a file or a few words about what happened first.": "Primero agregue un archivo o unas palabras sobre lo que pasó.",
+  "Add a file, type a document, or write a few words about what happened.": "Agregue un archivo, escriba un documento o cuente en pocas palabras lo que pasó.",
+  "Only the sample case takes sample documents.": "Solo el caso de ejemplo usa documentos de ejemplo.",
+  "Please agree to how BayouBridge handles your documents first.": "Primero acepte cómo BayouBridge maneja sus documentos.",
+  "Please choose what kind of document you typed.": "Elija qué tipo de documento escribió.",
+  "Please enter the address of the damaged home.": "Escriba la dirección de la casa dañada.",
+  "The sample case uses synthetic documents only.": "El caso de ejemplo solo usa documentos inventados.",
+  "The typed documents could not be read. Please try again.": "No pudimos leer los documentos escritos. Intente de nuevo.",
+  "This case has expired or was deleted. Please start again.": "Este caso venció o se borró. Por favor empiece de nuevo.",
+  "This case has expired or was deleted.": "Este caso venció o se borró.",
+  "Case not found. Run the agents first.": "No encontramos el caso. Primero deje que trabajen los ayudantes.",
+  "Case not found.": "No encontramos el caso.",
+  "No packet has been drafted for this task yet.": "Todavía no hay un paquete preparado para este paso.",
+  "Send the files as multipart/form-data.": "No se pudieron enviar los archivos. Intente de nuevo.",
+  "The agent pipeline failed. See the server log.": "Los ayudantes tuvieron un problema y no terminaron. Intente de nuevo.",
+  "This task doesn't send anything, so there is nothing to approve.": "Este paso no envía nada, así que no hay nada que aprobar.",
+  "Unknown task. The plan may have changed; run the agents again.": "No encontramos este paso. Puede que el plan haya cambiado; deje que los ayudantes trabajen de nuevo.",
+  "The agents couldn't finish.": "Los ayudantes no pudieron terminar.",
+  "Failed to fetch": "No hay conexión con el servidor. Revise su internet e intente de nuevo.",
 
   // Coordinator step labels and fallback notes (src/lib/agents/coordinator.ts)
   "Checking the bill's address and dates": "Revisar la dirección y las fechas de la factura",
@@ -235,6 +257,20 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
   [/^Claude (\d+) · rules (\d+)$/, (c, r) => `Claude ${c} · reglas ${r}`],
   [/^(?:All (\d+) documents|(\d+) of (\d+) documents) fell back to the offline rules engine because Claude timed out, refused, returned unusable output or errored\. The agent log shows the reason for each\.$/,
     (all, n, of) => `${all ? `Los ${all} documentos pasaron` : `${n} de ${of} documentos pasaron`} al motor de reglas sin conexión porque Claude tardó demasiado, se negó, dio una respuesta inservible o falló. El registro de los agentes muestra el motivo de cada uno.`],
+  // Errors with a name or number in them
+  [/^(.+): please upload a photo \(JPEG, PNG, WebP\), a PDF or a text file\.$/, (f) => `${f}: suba una foto (JPEG, PNG, WebP), un PDF o un archivo de texto.`],
+  [/^(.+) is larger than 8 MB\.$/, (f) => `${f} pesa más de 8 MB.`],
+  [/^You can add up to (\d+) files\.$/, (n) => `Puede agregar hasta ${n} archivos.`],
+  [/^You can type up to (\d+) documents\.$/, (n) => `Puede escribir hasta ${n} documentos.`],
+  [/^(.+): please type a little more of what it says\.$/, (k) => `${tr(k, "es")}: escriba un poco más de lo que dice.`],
+  [/^(.+): please keep it under (\d+) characters\.$/, (k, n) => `${tr(k, "es")}: use menos de ${n} caracteres.`],
+  [/^This task is blocked\. (.+)$/, (d) => `Este paso está en espera. ${tr(d, "es")}`],
+  [/^Upload failed \((\d+)\)$/, (n) => `No se pudo subir (error ${n}).`],
+  [/^Server returned (\d+)$/, (n) => `El servidor respondió con un error (${n}).`],
+  [/^(.+?): (.+)$/, (a, b) => { // "<task title>: <error>" from an approval
+    const ta = spanish(a), tb = spanish(b);
+    return ta && tb ? `${ta}: ${tb}` : undefined;
+  }],
   // Warnings from the coordinator
   [/^(.+) failed, so (.+)\.$/, (l, note) => `${tr(l, "es")}: falló, así que ${tr(note, "es")}.`],
   [/^(.+) failed \((.+)\)\.$/, (l, msg) => `${tr(l, "es")}: falló (${msg}).`],
@@ -243,9 +279,13 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
   [/^Reading (.+)$/, (f) => `Leer ${f}`],
 ];
 
+/** Typed-document titles: "Utility bill" → "Factura de servicios". */
+const KIND_TITLES: Record<string, string> = Object.fromEntries(Object.values(TYPED_KINDS).map((k) => [k.en, k.es]));
+
 /** The Spanish for an agent-written string, or undefined when there is no entry. */
 export function spanish(text: string): string | undefined {
   if (text in PHRASES) return PHRASES[text];
+  if (text in KIND_TITLES) return KIND_TITLES[text];
   for (const [re, fn] of PATTERNS) {
     const m = text.match(re);
     if (m) {

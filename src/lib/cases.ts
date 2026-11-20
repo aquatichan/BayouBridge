@@ -1,8 +1,10 @@
 import { DEMO_TODAY, documents as sampleDocuments, followUpDocuments, household as sampleHousehold } from "@/data/household";
 import { runCase, type Extractor, type RunHooks } from "@/lib/agents/coordinator";
+import { guessKind } from "@/lib/agents/evidence";
 import { extractWithClaude, readUpload } from "@/lib/agents/llmExtract";
 import { addDocuments, createSessionCase, getCase, saveRun, type UploadedFile } from "@/lib/store";
 import type { CaseDocument, CaseState } from "@/lib/types";
+import { isTypedKind, TYPED_CHARS, TYPED_KINDS, type TypedKind } from "@/lib/typedKinds";
 import { claudeConfigured } from "@/lib/runDemo";
 
 // Session cases for the consumer flow: a person's own uploads ("Start my case")
@@ -14,7 +16,12 @@ export const UPLOAD_LIMITS = {
   statementChars: 4000,
   /** What Claude can read. Phone photos are resized in the browser first (see the upload step). */
   types: new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "text/plain"]),
+  /** Documents typed out by hand, per case, and how long each may be. */
+  typed: 10,
+  typedChars: TYPED_CHARS,
 };
+
+export type TypedDoc = { kind: TypedKind; text: string };
 
 /** Reading a photo or PDF takes longer than text, so session runs get more time per document. */
 const SESSION_LIMITS = { docMs: 45_000, runMs: 90_000, breakerAfter: 3 };
@@ -43,13 +50,34 @@ export function createSampleCase(language: unknown): string {
 
 const cleanName = (name: string) => name.split(/[\\/]/).pop()!.replace(/[^\w.\- ()]/g, "_").slice(0, 80) || "upload";
 
-/** Store uploaded files (and the household's own words) on a case. Returns the new documents. */
-export async function addUploads(caseId: string, files: File[], statement?: string): Promise<CaseDocument[]> {
+/** Check typed documents from a request body; throws a CaseError a person can act on. */
+export function parseTyped(raw: unknown): TypedDoc[] {
+  if (raw === undefined || raw === null || raw === "") return [];
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try { list = JSON.parse(raw); } catch { throw new CaseError(400, "The typed documents could not be read. Please try again."); }
+  }
+  if (!Array.isArray(list)) throw new CaseError(400, "The typed documents could not be read. Please try again.");
+  return list.map((x) => {
+    const kind = (x as { kind?: unknown })?.kind;
+    const text = typeof (x as { text?: unknown })?.text === "string" ? ((x as { text: string }).text).trim() : "";
+    if (!isTypedKind(kind)) throw new CaseError(400, "Please choose what kind of document you typed.");
+    const name = TYPED_KINDS[kind].en;
+    if (text.length < UPLOAD_LIMITS.typedChars.min) throw new CaseError(400, `${name}: please type a little more of what it says.`);
+    if (text.length > UPLOAD_LIMITS.typedChars.max) throw new CaseError(413, `${name}: please keep it under ${UPLOAD_LIMITS.typedChars.max} characters.`);
+    return { kind, text };
+  });
+}
+
+/** Store uploaded files, typed documents and the household's own words on a case. Returns the new documents. */
+export async function addUploads(caseId: string, files: File[], statement?: string, typed: TypedDoc[] = []): Promise<CaseDocument[]> {
   const rec = getCase(caseId);
   if (!rec?.profile) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
   if (rec.profile.sample) throw new CaseError(400, "The sample case uses synthetic documents only.");
   const existing = rec.documents.filter((d) => d.source === "upload").length;
   if (existing + files.length > UPLOAD_LIMITS.files) throw new CaseError(413, `You can add up to ${UPLOAD_LIMITS.files} files.`);
+  const typedSoFar = rec.documents.filter((d) => d.source === "typed").length;
+  if (typedSoFar + typed.length > UPLOAD_LIMITS.typed) throw new CaseError(413, `You can type up to ${UPLOAD_LIMITS.typed} documents.`);
 
   const added: { doc: CaseDocument; file?: UploadedFile }[] = [];
   for (const f of files) {
@@ -57,12 +85,24 @@ export async function addUploads(caseId: string, files: File[], statement?: stri
     if (!UPLOAD_LIMITS.types.has(mime)) throw new CaseError(415, `${cleanName(f.name)}: please upload a photo (JPEG, PNG, WebP), a PDF or a text file.`);
     if (f.size > UPLOAD_LIMITS.bytes) throw new CaseError(413, `${cleanName(f.name)} is larger than 8 MB.`);
     const filename = cleanName(f.name);
+    const data = Buffer.from(await f.arrayBuffer());
+    // A text file can be read right here, so the offline rules engine reads it too. Claude still reads the file when a key is set.
+    const text = mime === "text/plain" ? data.toString("utf8").replace(/^\uFEFF/, "").slice(0, 20_000) : "";
     added.push({
       doc: {
-        id: `up-${crypto.randomUUID().slice(0, 8)}`, kind: mime.startsWith("image/") ? "photo" : "other",
-        title: filename, filename, mime, receivedAt: today(), text: "", language: rec.profile.language, source: "upload",
+        id: `up-${crypto.randomUUID().slice(0, 8)}`, kind: mime.startsWith("image/") ? "photo" : text ? guessKind(text) : "other",
+        title: filename, filename, mime, receivedAt: today(), text, language: rec.profile.language, source: "upload",
       },
-      file: { mime, data: Buffer.from(await f.arrayBuffer()) },
+      file: { mime, data },
+    });
+  }
+  for (const d of typed) {
+    added.push({
+      doc: {
+        id: `ty-${crypto.randomUUID().slice(0, 8)}`, kind: d.kind, title: TYPED_KINDS[d.kind][rec.profile.language],
+        filename: `${d.kind.replace(/_/g, "-")}-typed.txt`, mime: "text/plain", receivedAt: today(), text: d.text.slice(0, UPLOAD_LIMITS.typedChars.max),
+        language: rec.profile.language, source: "typed",
+      },
     });
   }
   const words = statement?.trim().slice(0, UPLOAD_LIMITS.statementChars);
@@ -74,7 +114,7 @@ export async function addUploads(caseId: string, files: File[], statement?: stri
       },
     });
   }
-  if (!added.length) throw new CaseError(400, "Add a file or a few words about what happened.");
+  if (!added.length) throw new CaseError(400, "Add a file, type a document, or write a few words about what happened.");
   addDocuments(caseId, added);
   return added.map((a) => a.doc);
 }

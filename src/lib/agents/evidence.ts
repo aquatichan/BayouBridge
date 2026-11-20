@@ -54,7 +54,7 @@ function sentenceOf(text: string, idx: number): string {
 }
 
 /** Free-form writing (a voice note, the household's own words, an unknown upload) rather than a form or letter. */
-const isNarrative = (doc: CaseDocument) => doc.kind === "voice_note" || doc.kind === "other" || doc.source === "statement";
+const isNarrative = (doc: CaseDocument) => doc.kind === "voice_note" || doc.kind === "other" || doc.source === "statement" || doc.source === "typed";
 
 const MONTH_NAMES = "January|February|March|April|May|June|July|August|September|October|November|December";
 const MONTH_ABBR: Record<string, string> = { jan: "january", feb: "february", mar: "march", apr: "april", jun: "june", jul: "july", aug: "august", sep: "september", sept: "september", oct: "october", nov: "november", dec: "december" };
@@ -118,7 +118,7 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
     add("person", "Household member (son)", `${m[1]} (age ${m[2]})`, q, "role:son", 0.8));
 
   // Address
-  find(/(\d{3,5} [A-Z][A-Za-z ]+ (?:Ln|St|Ave|Dr|Rd|Blvd)\b(?:, Houston, TX \d{5})?)/, (m, q) =>
+  find(/(\d{3,5} [A-Z][A-Za-z ]+ (?:Ln|St|Ave|Dr|Rd|Blvd|Lane|Street|Avenue|Drive|Road|Boulevard|Ct|Court|Way|Pl|Place|Pkwy|Parkway|Cir|Circle|Trl|Trail)\b(?:,? (?:Apt\.?|Unit|#) ?[A-Za-z0-9-]+)?(?:, [A-Z][a-zA-Z ]+, TX \d{5})?)/, (m, q) =>
     add("address", "Property address", m[1], q, m[1].slice(0, 26).toLowerCase(), 0.95));
 
   // Dates of loss / incident
@@ -196,9 +196,87 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
     add("mentions_evidence", "Has a utility bill (not uploaded)", `${month ? `${month} ` : ""}electric bill in email`, q, "has:proof_of_occupancy", 0.82);
   });
 
-  if (narrative) storyFacts(doc, facts, add);
+  if (narrative) {
+    storyFacts(doc, facts, add);
+    typedDocFacts(doc, facts, add);
+  }
 
   return { docId: doc.id, evidenceTypes: classify(doc, facts), facts, method: "rules" };
+}
+
+/**
+ * What a typed-in letter, bill or estimate says, written the way people write it rather than
+ * the way the letters print it: "the letter is dated Oct 30", "send them by November 24",
+ * "bill for Sept 1 to Sept 30", "the estimate is $12,400", "claim number HO-1234".
+ */
+function typedDocFacts(doc: CaseDocument, facts: Fact[], add: Add) {
+  const sentences = doc.text.split("\n").flatMap((l) => l.split(/(?<=[.!?])\s+/)).map((x) => x.trim()).filter(Boolean);
+  const hasType = (type: FactType, prefix = "") => facts.some((f) => f.type === type && (f.normalized ?? "").startsWith(prefix));
+  /** Every date in a sentence, in order. */
+  const datesIn = (s: string) => {
+    const found: { text: string; iso: string }[] = [];
+    let tail = s;
+    for (let d = storyDate(tail, doc.receivedAt); d; d = storyDate(tail, doc.receivedAt)) {
+      found.push(d);
+      tail = tail.slice(tail.indexOf(d.text) + d.text.length);
+    }
+    return found;
+  };
+  const money = (s: string) => s.match(/\$\s?([\d,]+(?:\.\d{2})?)/)?.[1]?.replace(/,/g, "");
+  const dollars = (n: string) => `$${Number(n).toLocaleString("en-US")}`;
+  const idAfter = (s: string, words: string) =>
+    s.match(new RegExp(`\\b(?:${words})\\s*(?:number|no\\.?|#|n[uú]mero|id)?\\s*(?:is|es|:)?\\s*#?([A-Z0-9][A-Z0-9-]{4,})`, "i"))?.[1];
+
+  for (const s of sentences) {
+    const dates = datesIn(s);
+    if (doc.kind === "fema_letter" && !hasType("deadline", "fema_letter_date:") && dates[0] && /letter|dated|date|sent|carta|fecha|envi/i.test(s)) {
+      add("deadline", "Letter date (appeal clock starts)", dates[0].text, s, `fema_letter_date:${dates[0].iso}`, 0.8);
+    }
+    if (doc.kind === "insurance_email" && !hasType("deadline", "insurance_due:") && dates[0] && /\bby\b|before|due|deadline|no later|antes del?|para el|fecha l[ií]mite/i.test(s)) {
+      add("deadline", "Documents due to insurer", dates[0].text, s, `insurance_due:${dates[0].iso}`, 0.8);
+    }
+    if (doc.kind === "insurance_email" && !hasType("appointment") && dates[0] && /inspect|adjuster|visit|inspecci|ajustador|visita/i.test(s) && !/\bby\b|due/i.test(s)) {
+      add("appointment", "Adjuster inspection", dates[0].text, s, dates[0].iso, 0.75);
+    }
+    if ((doc.kind === "utility_bill" || doc.kind === "bank_statement") && !hasType("billing_period") && dates.length
+      && /period|from|through|\bto\b|bill|statement|periodo|\bdel\b|\bal\b|factura|estado/i.test(s)) {
+      add("billing_period", "Billing period", dates.map((d) => d.text).join(" – "), s, `billing_end:${dates[dates.length - 1].iso}`, 0.8);
+    }
+    const amount = money(s);
+    if (doc.kind === "estimate" && amount && !facts.some((f) => f.label === "Repair estimate total") && /total|estimat|quote|presupuesto|cotizaci|cost/i.test(s)) {
+      add("money", "Repair estimate total", dollars(amount), s, amount, 0.8);
+    }
+    if (amount && !facts.some((f) => f.label === "Hurricane deductible") && /deductible|deducible/i.test(s)) {
+      add("money", "Hurricane deductible", dollars(amount), s, amount, 0.75);
+    }
+    const claim = idAfter(s, "claim|reclamo");
+    if (claim && /\d/.test(claim) && !hasType("claim_number")) add("claim_number", "Insurance claim number", claim, s, claim, 0.8);
+    const policy = idAfter(s, "policy|p[oó]liza");
+    if (policy && /\d/.test(policy) && !hasType("policy_number")) add("policy_number", "Policy number", policy, s, policy, 0.8);
+    const reg = idAfter(s, "registration|registro(?: de FEMA)?");
+    if (reg && /^\d[\d-]{6,}$/.test(reg) && !hasType("fema_registration")) add("fema_registration", "FEMA registration ID", reg, s, reg, 0.8);
+    if (doc.kind === "fema_letter" && !hasType("determination", "missing:") && /verify|occupan|lived|live there|comprobar|viv[ií]a/i.test(s)) {
+      add("determination", "Missing for FEMA", "Proof of occupancy", s, "missing:proof_of_occupancy", 0.75);
+    }
+    if (doc.kind === "fema_letter" && !hasType("determination", "fema_ineligible") && /ineligible|not eligible|denied|insufficient|no (?:es )?elegible|neg[oó]|informaci[oó]n insuficiente/i.test(s)) {
+      add("determination", "FEMA decision", "Ineligible (as typed by the household)", s, "fema_ineligible_info", 0.75);
+    }
+  }
+}
+
+/** What kind of document a plain-text file probably is, from its words. Claude decides when it reads the file. */
+export function guessKind(text: string): CaseDocument["kind"] {
+  const t = text.toLowerCase();
+  if (/\bfema\b/.test(t) && /decision|eligib|registration|determinaci|registro/.test(t)) return "fema_letter";
+  if (/billing period|service address|kwh|amount due|statement period|periodo de facturaci/.test(t)) return /\bbank\b|banco|account balance/.test(t) ? "bank_statement" : "utility_bill";
+  if (/\blease\b|landlord|tenant|contrato de (?:renta|arrendamiento)|arrendador/.test(t)) return "lease";
+  if (/declarations? page|coverage a\b|policy period/.test(t)) return "insurance_policy";
+  if (/\bclaim\b|adjuster|\breclamo\b|ajustador/.test(t)) return "insurance_email";
+  if (/estimate|line items?|labor|presupuesto|cotizaci/.test(t)) return "estimate";
+  if (/driver.?s license|identification card|licencia de conducir/.test(t)) return "id_card";
+  if (/physician|\bdr\.|doctor|m[eé]dico/.test(t) && findEquipment(t)) return "medical_letter";
+  if (/receipt|recibo/.test(t)) return "receipt";
+  return "other";
 }
 
 type Add = (type: FactType, label: string, value: string, quote: string, normalized?: string, confidence?: number) => void;
@@ -254,7 +332,7 @@ function storyFacts(doc: CaseDocument, facts: Fact[], add: Add) {
       if (!has("missing:proof_of_occupancy") && /lived|live there|occupancy|proof of (?:address|residence)|comprobante|domicilio|viv[ií]amos/i.test(s)) {
         add("determination", "Missing for FEMA", "Proof of occupancy", s, "missing:proof_of_occupancy", 0.7);
       }
-      if (!has("has:fema_determination") && /letter|carta/i.test(s)) add("mentions_evidence", "Has a FEMA letter (not uploaded)", "FEMA letter", s, "has:fema_determination", 0.75);
+      if (!has("has:fema_determination") && /letter|carta/i.test(s)) add("mentions_evidence", "Has a FEMA letter (not uploaded)", "letter from FEMA", s, "has:fema_determination", 0.75);
     }
 
     // Rent or own
@@ -280,7 +358,9 @@ export interface ClassifyContext {
   dateOfLoss?: string;
 }
 
-const SUFFIX: Record<string, string> = { lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd", boulevard: "blvd" };
+const SUFFIX: Record<string, string> = {
+  lane: "ln", street: "st", avenue: "ave", drive: "dr", road: "rd", boulevard: "blvd", court: "ct", place: "pl", parkway: "pkwy", circle: "cir", trail: "trl",
+};
 /** "1847 Cypress Bayou Lane, Houston" → "1847cypressbayouln": street line only, suffixes abbreviated. */
 export function streetKey(address: string): string {
   return address.split(",")[0].toLowerCase().split(/\s+/).map((w) => SUFFIX[w.replace(/\./g, "")] ?? w).join("").replace(/[^a-z0-9]/g, "");
@@ -291,9 +371,14 @@ export function streetKey(address: string): string {
  * damaged home and its billing period ends before the date of loss (FEMA asks
  * for proof dated before the disaster).
  */
-export function occupancyCheck(facts: Fact[], ctx: ClassifyContext): { ok: boolean; reason: string } {
-  const home = streetKey(ctx.address);
-  const addressOk = facts.some((f) => f.type === "address" && streetKey(f.value) === home);
+export function occupancyCheck(facts: Fact[], ctx: ClassifyContext, kind?: CaseDocument["kind"]): { ok: boolean; reason: string } {
+  // The street line only, without an apartment number, on both sides.
+  const noApt = (a: string) => a.replace(/,?\s*(?:apt\.?|unit|#)\s*[a-z0-9-]+/i, "");
+  const home = streetKey(noApt(ctx.address));
+  const addressOk = facts.some((f) => f.type === "address" && streetKey(noApt(f.value)) === home);
+  if (kind === "lease") {
+    return addressOk ? { ok: true, reason: `the lease is for ${ctx.address.split(",")[0]}` } : { ok: false, reason: `the lease address does not match ${ctx.address.split(",")[0]}` };
+  }
   const end = facts.find((f) => f.type === "billing_period" && f.normalized?.startsWith("billing_end:"))?.normalized?.slice(12);
   if (!addressOk) return { ok: false, reason: `the service address does not match ${ctx.address.split(",")[0]}` };
   if (!end) return { ok: false, reason: "no billing period found on the bill" };
@@ -313,11 +398,12 @@ export function classify(doc: CaseDocument, facts: Fact[], ctx?: ClassifyContext
   if (doc.kind === "estimate") out.add("repair_estimate");
   if (doc.kind === "fema_letter") out.add("fema_determination");
   if (doc.kind === "insurance_email") out.add("insurance_correspondence");
-  if (OCCUPANCY_KINDS.includes(doc.kind) && ctx && occupancyCheck(facts, ctx).ok) out.add("proof_of_occupancy");
+  if (OCCUPANCY_KINDS.includes(doc.kind) && ctx && occupancyCheck(facts, ctx, doc.kind).ok) out.add("proof_of_occupancy");
   if (doc.kind === "id_card") out.add("proof_of_identity");
   if (doc.kind === "insurance_policy") out.add("insurance_policy");
   if (doc.kind === "medical_letter") out.add("medical_need_documentation");
   if (doc.kind === "receipt") out.add("loss_receipts");
-  if (doc.kind === "voice_note" && facts.some((f) => f.type === "need")) out.add("loss_statement");
+  // What the household says it lost, in its own words: a voice note, a statement, or a typed note.
+  if ((doc.kind === "voice_note" || doc.source === "statement" || (doc.source === "typed" && doc.kind === "other")) && facts.some((f) => f.type === "need")) out.add("loss_statement");
   return [...out];
 }

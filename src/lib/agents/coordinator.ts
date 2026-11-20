@@ -185,7 +185,7 @@ export async function runCase(input: {
           const i = state.extractions.findIndex((e) => e.docId === d.id);
           if (i < 0) continue;
           const ex = state.extractions[i];
-          const check = occupancyCheck(ex.facts, ctx);
+          const check = occupancyCheck(ex.facts, ctx, d.kind);
           state.extractions[i] = { ...ex, evidenceTypes: classify(d, ex.facts, ctx) }; // copy: reused extractions stay untouched
           log("Evidence Agent", check.ok ? "Verified proof of occupancy" : "Occupancy not verified", `${d.filename}: ${check.reason}.`, [d.id], check.ok ? MANUAL_MINUTES.occupancy : undefined);
         }

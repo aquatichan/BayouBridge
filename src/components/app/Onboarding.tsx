@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ACCEPT, MAX_FILES, problemWith } from "@/lib/client/files";
+import { TYPED_CHARS, TYPED_KINDS, type TypedKind } from "@/lib/typedKinds";
+import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
 // The steps before the agents run: welcome, consent, your home, upload.
@@ -79,7 +81,7 @@ export function Home({ lang, onSubmit, onBack, busy, error }: {
           <input maxLength={80} value={name} onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded-xl border border-line bg-bg/70 px-3 text-ink placeholder:text-muted/70 py-2.5 text-base font-normal outline-none focus:border-bayou" />
         </label>
-        {error && <p role="alert" className="rounded-xl bg-clay-soft p-2 text-xs text-clay">{error}</p>}
+        {error && <p role="alert" className="rounded-xl bg-clay-soft p-2 text-xs text-clay">{tr(error, lang)}</p>}
         <div className="flex justify-between gap-2 pt-1">
           <button type="button" className={secondary} onClick={onBack}>{t.back}</button>
           <button className={primary} disabled={busy || address.trim().length < 5}>{t.continue}</button>
@@ -128,6 +130,87 @@ function useDictation(lang: Lang, onText: (text: string) => void) {
   return { supported: Boolean(Ctor), on, toggle };
 }
 
+export type TypedDoc = { kind: TypedKind; text: string };
+
+// ── Drag and drop, and typing a document out ───────────────────────────────
+
+/** Accepts files dropped anywhere on it, with a clear "drop here" overlay. */
+export function DropZone({ lang, onDrop, children, className = "", disabled = false }: {
+  lang: Lang; onDrop: (files: File[]) => void; children: React.ReactNode; className?: string; disabled?: boolean;
+}) {
+  const t = STRINGS[lang];
+  const [over, setOver] = useState(false);
+  const hasFiles = (e: React.DragEvent) => !disabled && [...e.dataTransfer.types].includes("Files");
+  return (
+    <div className={`relative ${className}`}
+      onDragEnter={(e) => { if (hasFiles(e)) { e.preventDefault(); setOver(true); } }}
+      onDragOver={(e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
+      onDrop={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setOver(false); onDrop([...e.dataTransfer.files]); }}>
+      {children}
+      {over && (
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-bayou bg-panel/90 text-sm font-semibold text-tide">
+          ⬇ {t.dropHere}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Pick a document type and type what it says. Checks it the same way the server does. */
+export function TypedDocEditor({ lang, onAdd, onCancel, initialKind }: {
+  lang: Lang; onAdd: (d: TypedDoc) => void; onCancel?: () => void; initialKind?: TypedKind;
+}) {
+  const t = STRINGS[lang];
+  const [kind, setKind] = useState<TypedKind | "">(initialKind ?? "");
+  const [text, setText] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const submit = () => {
+    if (!kind) return setProblem(t.pickTypeFirst);
+    if (text.trim().length < TYPED_CHARS.min) return setProblem(t.typedTooShort);
+    onAdd({ kind, text: text.trim() });
+    setText(""); setProblem(null);
+    if (!initialKind) setKind("");
+  };
+  return (
+    <div className="space-y-2 rounded-2xl border border-line bg-bg/50 p-3">
+      <label className="block text-xs font-semibold text-ink">
+        {t.docType}
+        <select value={kind} onChange={(e) => { setKind(e.target.value as TypedKind); setProblem(null); }}
+          className="mt-1 w-full rounded-xl border border-line bg-bg/70 px-3 py-2 text-sm font-normal text-ink outline-none focus:border-bayou">
+          <option value="">{t.pickType}</option>
+          {(Object.keys(TYPED_KINDS) as TypedKind[]).map((k) => <option key={k} value={k}>{TYPED_KINDS[k][lang]}</option>)}
+        </select>
+      </label>
+      <label className="block text-xs font-semibold text-ink">
+        {t.docText}
+        <textarea value={text} onChange={(e) => { setText(e.target.value); setProblem(null); }} rows={4} maxLength={TYPED_CHARS.max}
+          placeholder={kind ? TYPED_KINDS[kind].hint[lang] : t.typeDocBody}
+          className="mt-1 w-full rounded-xl border border-line bg-bg/70 px-3 py-2 text-sm font-normal text-ink placeholder:text-muted/70 outline-none focus:border-bayou" />
+      </label>
+      {problem && <p role="alert" className="text-xs text-clay">{problem}</p>}
+      <div className="flex justify-end gap-2">
+        {onCancel && <button type="button" onClick={onCancel} className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink">{t.cancel}</button>}
+        <button type="button" onClick={submit} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white">{t.addTyped}</button>
+      </div>
+    </div>
+  );
+}
+
+/** Split picked files into the ones the server will take and plain-language reasons for the rest. */
+export function checkFiles(picked: File[], lang: Lang, room: number): { ok: File[]; problems: string[] } {
+  const problems: string[] = [];
+  const ok: File[] = [];
+  for (const f of picked) {
+    // HEIC/HEIF get converted when the photo is shrunk (Safari), so let them through here.
+    const p = /image\/hei[cf]/.test(f.type) ? undefined : problemWith(f, lang);
+    if (p) problems.push(p);
+    else ok.push(f);
+  }
+  if (ok.length > room) problems.push(STRINGS[lang].tooMany(MAX_FILES));
+  return { ok: ok.slice(0, Math.max(0, room)), problems };
+}
+
 // ── Upload ──────────────────────────────────────────────────────────────────
 
 export function FilePicker({ lang, onPick, label, capture = false, className = secondary }: {
@@ -145,10 +228,12 @@ export function FilePicker({ lang, onPick, label, capture = false, className = s
 }
 
 export function Upload({ lang, claudeOn, onSubmit, busy, error }: {
-  lang: Lang; claudeOn: boolean | null; onSubmit: (files: File[], statement: string) => void; busy: boolean; error?: string | null;
+  lang: Lang; claudeOn: boolean | null; onSubmit: (files: File[], statement: string, typed: TypedDoc[]) => void; busy: boolean; error?: string | null;
 }) {
   const t = STRINGS[lang];
   const [files, setFiles] = useState<{ file: File; url?: string }[]>([]);
+  const [typed, setTyped] = useState<TypedDoc[]>([]);
+  const [typing, setTyping] = useState(false);
   const [words, setWords] = useState("");
   const [problems, setProblems] = useState<string[]>([]);
   const dictation = useDictation(lang, (text) => setWords((w) => (w ? `${w} ${text}` : text)));
@@ -156,30 +241,45 @@ export function Upload({ lang, claudeOn, onSubmit, busy, error }: {
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
   const add = (picked: File[]) => {
-    const issues: string[] = [];
-    const ok: { file: File; url?: string }[] = [];
-    for (const f of picked) {
-      // HEIC/HEIF get converted when the photo is shrunk (Safari), so let them through here.
-      const p = /image\/hei[cf]/.test(f.type) ? undefined : problemWith(f, lang);
-      if (p) { issues.push(p); continue; }
-      const url = f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined;
-      if (url) urls.current.add(url);
-      ok.push({ file: f, url });
-    }
+    const { ok, problems: issues } = checkFiles(picked, lang, MAX_FILES - files.length);
     setProblems(issues);
-    setFiles((cur) => [...cur, ...ok].slice(0, MAX_FILES));
+    setFiles((cur) => [...cur, ...ok.map((file) => {
+      const url = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      if (url) urls.current.add(url);
+      return { file, url };
+    })]);
   };
 
   return (
     <Card wide>
+      <DropZone lang={lang} onDrop={add}>
       <h2 className="text-xl font-bold text-ink">{t.uploadTitle}</h2>
       <p className="mt-1 text-sm text-muted">{t.uploadBody}</p>
       {claudeOn === false && <p className="mt-3 rounded-xl bg-amber-soft p-2.5 text-xs text-ink">{t.noReader}</p>}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-line p-3">
         <FilePicker lang={lang} onPick={add} label={`＋ ${t.addFiles}`} />
         <FilePicker lang={lang} onPick={add} label={`📷 ${t.takePhoto}`} capture />
+        <button type="button" className={secondary} onClick={() => setTyping((v) => !v)} aria-expanded={typing}>⌨ {t.typeDoc}</button>
+        <span className="hidden text-xs text-muted md:inline">{t.orDrag}</span>
       </div>
+      {typing && (
+        <div className="mt-3">
+          <TypedDocEditor lang={lang} onAdd={(d) => { setTyped((cur) => [...cur, d]); setTyping(false); }} onCancel={() => setTyping(false)} />
+        </div>
+      )}
+      {typed.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {typed.map((d, i) => (
+            <li key={i} className="flex items-start gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-xs">
+              <span aria-hidden>⌨</span>
+              <span className="min-w-0 flex-1"><b className="text-ink">{TYPED_KINDS[d.kind][lang]}</b> <span className="text-muted">· {t.typed}</span>
+                <span className="block truncate text-muted">{d.text}</span></span>
+              <button type="button" onClick={() => setTyped((cur) => cur.filter((_, j) => j !== i))} aria-label={`${t.remove} ${TYPED_KINDS[d.kind][lang]}`} className="text-muted hover:text-clay">✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
       {files.length > 0 && (
         <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
           {files.map(({ file, url }, i) => (
@@ -208,13 +308,18 @@ export function Upload({ lang, claudeOn, onSubmit, busy, error }: {
         </button>
       )}
 
-      {error && <p role="alert" className="mt-3 rounded-xl bg-clay-soft p-2 text-xs text-clay">{error}</p>}
+      {error && <p role="alert" className="mt-3 rounded-xl bg-clay-soft p-2 text-xs text-clay">{tr(error, lang)}</p>}
       <div className="mt-5 flex items-center justify-between gap-2">
-        <span className="text-xs text-muted">{t.files(files.length)}</span>
-        <button className={primary} disabled={busy || (!files.length && !words.trim())} onClick={() => onSubmit(files.map((f) => f.file), words)}>
-          {busy ? `${t.working}…` : t.go}
+        <span className="text-xs text-muted">{t.files(files.length + typed.length)}</span>
+        <button className={primary} disabled={busy || (!files.length && !typed.length && !words.trim())} onClick={() => onSubmit(files.map((f) => f.file), words, typed)}>
+          {busy ? (
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />{t.sending}
+            </span>
+          ) : t.go}
         </button>
       </div>
+      </DropZone>
     </Card>
   );
 }
