@@ -11,6 +11,7 @@ import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask,
 import CasePanel from "./CasePanel";
 import { Consent, Home, Upload, Welcome } from "./Onboarding";
 import { tr } from "@/lib/es";
+import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import { STRINGS, type Lang } from "./i18n";
 
 // The consumer app: welcome → consent → your home → upload → the office.
@@ -87,7 +88,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const [state, setState] = useState<CaseState | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [tasks, setTasks] = useState<Record<string, TaskUpdate>>({});
-  const [, setMode] = useState<ExtractionSummary | null>(null);
+  const [mode, setMode] = useState<ExtractionSummary | null>(null);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -136,7 +137,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     const before = opts.incremental ? eventsRef.current : [];
     const blockedBefore = new Set(state?.matches.filter((m) => m.blocked).map((m) => m.programId) ?? []);
     setRunning(true); setError(null); setApproveError(null); setTasks({}); setCheer(undefined);
-    if (!opts.incremental) { setState(null); setEvents([]); }
+    if (!opts.incremental) { setState(null); setEvents([]); setMode(null); }
     director.newRun(opts.newDocs);
     const body = { caseId: id, incremental: opts.incremental, addDocumentIds: opts.addDocumentIds };
     const finish = (final: CaseState, extraction: ExtractionSummary) => {
@@ -279,6 +280,12 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           {inOffice && minutes > 0 && <span className="hidden whitespace-nowrap rounded-full bg-bayou-soft px-2.5 py-1 font-semibold text-tide shadow-sm lg:inline">⏱ {t.minutes(minutes)}</span>}
+          {inOffice && mode && !running && (
+            <span title={tr(extractionTooltip(mode), lang)}
+              className="hidden whitespace-nowrap rounded-full border border-tide/15 bg-panel/75 px-2.5 py-1 font-medium text-muted shadow-sm backdrop-blur-md sm:inline">
+              {t.extraction} <b className="text-ink">{tr(extractionLabel(mode), lang)}</b>
+            </span>
+          )}
           {sample && inOffice && <span className="whitespace-nowrap rounded-full bg-amber-soft px-2.5 py-1 font-medium text-amber shadow-sm" title={t.sampleNote}>{wide && !sideOpen ? t.sampleNote.split(".")[0] : t.sampleShort}</span>}
           <div className="flex overflow-hidden rounded-full border border-tide/15 bg-panel/75 shadow-[0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-md">
             {(["en", "es"] as const).map((l) => (
@@ -331,7 +338,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
             </button>
           ) : (
             <CasePanel
-              s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample}
+              s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample} mode={mode}
               billPending={billPending} approving={approving} approveError={approveError}
               onApprove={approve} onUpload={followUp}
               onBill={() => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: ["doc-electric-bill"] })}

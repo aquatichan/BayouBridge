@@ -1,4 +1,5 @@
 import { EVIDENCE_LABELS, programs, type ProgramRule } from "@/data/resources";
+import { equipmentUser, findEquipment } from "@/lib/equipment";
 import type {
   CaseDocument, Conflict, DocKind, EvidenceType, ExtractionResult, Fact, FollowUpQuestion,
   GraphEdge, GraphNode, Need, NeedKey, Person, PlanTask, ProgramMatch,
@@ -47,7 +48,10 @@ export interface CaseContext {
 }
 
 const overlaps = (a: string, b: string) => a.includes(b) || b.includes(a);
-const equipmentOf = (needValue: string) => needValue.replace(/\s*\(.*\)$/, "");
+/** The equipment a medical-power need is about: "Oxygen concentrator (Carmen, 71)" or Claude's "Husband uses a CPAP machine" → its name. */
+const equipmentOf = (need: Fact) =>
+  findEquipment(need.value) ?? findEquipment(need.quote)
+  ?? (need.value.replace(/\s*\(.*\)$/, "").replace(/^.*\buses (?:an? )?/i, "").trim() || "Medical equipment");
 /** "Oxygen concentrator" → "oxygen concentrator", but "CPAP machine" stays as is. */
 const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
 const EQUIPMENT_SHORT: Record<string, string> = { "oxygen concentrator": "oxygen" };
@@ -63,19 +67,33 @@ export function caseContext(address: string, ex: ExtractionResult[], approver: C
   const need = facts.find((f) => f.type === "need" && f.normalized === "medical_power");
   if (!need) return { street, approver };
   const person = facts.find((f) => f.type === "person" && f.normalized?.startsWith("role:") && medicalFactFor(f, [need]));
-  const named = need.value.match(/\(([^,)]+)/)?.[1];
+  const named = need.value.match(/\((\p{Lu}[\p{L}'-]+)/u)?.[1]; // a capitalized first name, not "(husband)"
   return {
     street,
     approver,
     medical: {
       first: person ? person.value.split(/[\s(]/)[0] : named && named !== "household member" ? named : undefined,
-      relation: person?.normalized?.slice("role:".length),
-      equipment: lowerFirst(equipmentOf(need.value)) || "medical equipment",
+      // No person fact for them (e.g. "My husband uses a CPAP machine"): the relative named next to the equipment.
+      relation: person?.normalized?.slice("role:".length) ?? equipmentUser(need.quote) ?? equipmentUser(need.value),
+      equipment: lowerFirst(equipmentOf(need)),
     },
   };
 }
 
 const RELATION: Record<string, string> = { "role:mother": "Mother", "role:son": "Son" };
+const PRONOUN: Record<string, string> = {
+  mother: "Her", wife: "Her", daughter: "Her", grandmother: "Her", son: "His", husband: "His", father: "His", grandfather: "His",
+};
+const RELATIVE_ES: Record<string, string> = {
+  mother: "mamá", father: "papá", wife: "esposa", husband: "esposo", daughter: "hija", son: "hijo", grandmother: "abuela", grandfather: "abuelo",
+};
+/** Who uses the equipment, for "___'s doctor": their name, else "your husband" (or "the husband" for a navigator), else "the household member". */
+function member(ctx: CaseContext): string {
+  const m = ctx.medical;
+  if (m?.first) return m.first;
+  if (m?.relation) return `${ctx.approver === "household" ? "your" : "the"} ${m.relation}`;
+  return "the household member";
+}
 
 /** "Mother, 71, uses oxygen": relation, age and equipment, all read from the facts. */
 function roleOf(f: Fact, facts: Fact[]): string {
@@ -83,7 +101,7 @@ function roleOf(f: Fact, facts: Fact[]): string {
   if (!relation) return "Head of household";
   const age = f.value.match(/\(age (\d+)\)/)?.[1] ?? f.quote.match(/\b(?:tiene|is|aged?)\s+(\d{1,3})\b/i)?.[1];
   const need = medicalFactFor(f, facts);
-  const equipment = need ? lowerFirst(equipmentOf(need.value)) : undefined;
+  const equipment = need ? lowerFirst(equipmentOf(need)) : undefined;
   return [relation, age, equipment && `uses ${EQUIPMENT_SHORT[equipment] ?? equipment}`].filter(Boolean).join(", ");
 }
 
@@ -132,9 +150,10 @@ export function deriveNeeds(ex: ExtractionResult[], docs: CaseDocument[] = []): 
   const facts = allFacts(ex);
   // Labels that depend on the household come from the supporting facts and their documents.
   const labelFor = (key: NeedKey, ids: string[]) => {
-    const v = facts.find((f) => f.id === ids[0])?.value ?? "";
+    const first = facts.find((f) => f.id === ids[0]);
+    const v = first?.value ?? "";
     const text = docs.filter((d) => ids.some((id) => facts.find((f) => f.id === id)?.docId === d.id)).map((d) => d.text.toLowerCase()).join("\n");
-    if (key === "medical_power" && v) return `${equipmentOf(v)} needs reliable power`;
+    if (key === "medical_power" && first) return `${equipmentOf(first)} needs reliable power`;
     const outage = v.match(/\(([^)]*outage)\)/)?.[1];
     if (key === "food_loss") return outage ? `Food lost in ${outage}` : "Food lost in power outage";
     if (key === "roof_damage" && docs.length) return /\btarp/.test(text) ? NEED_META.roof_damage.label : "Roof wind damage";
@@ -272,7 +291,7 @@ export function matchPrograms(
       evidence,
       readiness,
       deadline,
-      nextAction: p.nextAction.replace("{member}", ctx?.medical?.first ?? "the household member"),
+      nextAction: p.nextAction.replace("{member}", ctx ? member(ctx) : "the household member"),
       blocked: missing.length > 0,
       blockedBy: missing.map((m) => m.label),
       source: p.source,
@@ -311,9 +330,10 @@ function questionFor(type: EvidenceType, ctx: CaseContext, hint?: string): { en:
   }
   if (type === "medical_need_documentation") {
     const first = ctx.medical?.first;
+    const rel = ctx.medical?.relation;
     return {
-      en: `Who is ${first ? `${first}'s` : "the household member's"} doctor? We can send them the form to list your home as a critical care customer.`,
-      es: `¿Quién es el médico de ${first ?? "su familiar"}? Le podemos enviar el formulario para registrar su casa como cliente de cuidado crítico.`,
+      en: `Who is ${member(ctx)}'s doctor? We can send them the form to list your home as a critical care customer.`,
+      es: `¿Quién es el médico de ${first ?? (rel && RELATIVE_ES[rel] ? `su ${RELATIVE_ES[rel]}` : "su familiar")}? Le podemos enviar el formulario para registrar su casa como cliente de cuidado crítico.`,
     };
   }
   return QUESTIONS[type];
@@ -379,10 +399,10 @@ export function buildPlan(
   const critical = matches.find((m) => m.programId === "critical-care");
   if (critical) {
     const m = ctx.medical;
-    // "Her"/"His" only when the documents state the relationship (mother/son); otherwise the person's name.
-    const whose = m?.relation === "mother" ? "Her" : m?.relation === "son" ? "His" : m?.first ? `${m.first}'s` : "Their";
+    // "Her"/"His" only when the documents state the relationship; otherwise the person's name.
+    const whose = (m?.relation && PRONOUN[m.relation]) ?? (m?.first ? `${m.first}'s` : "Their");
     add(critical.programId, {
-      title: `Get ${m?.first ? `${m.first}'s` : "the household member's"} doctor to sign the critical care form`,
+      title: `Get ${member(ctx)}'s doctor to sign the critical care form`,
       owner: "Navigator", priority: 0, programId: critical.programId, status: "blocked",
       detail: `${whose} ${m?.equipment ?? "medical equipment"} needs power. Also make a backup plan for the next outage.`,
     });

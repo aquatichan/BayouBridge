@@ -99,6 +99,14 @@ const PHRASES: Record<string, string> = {
   "Repair estimate total": "Total del presupuesto de reparación",
   "Roof damage": "Daño al techo",
 
+  // Which extractor ran (src/lib/labels.ts)
+  Claude: "Claude",
+  "rules engine": "el motor de reglas",
+  "Claude read every document. Its facts were checked against the document text and backstopped by the rules engine.":
+    "Claude leyó todos los documentos. Cada dato se comprobó con el texto del documento, y el motor de reglas revisó que no faltara nada.",
+  "No API key is set, so the offline rules engine read every document.":
+    "Este servidor no tiene clave de Claude, así que el motor de reglas sin conexión leyó todos los documentos.",
+
   // Coordinator step labels and fallback notes (src/lib/agents/coordinator.ts)
   "Checking the bill's address and dates": "Revisar la dirección y las fechas de la factura",
   "Working out who's who": "Ver quién es quién",
@@ -134,8 +142,13 @@ const EQUIPMENT: Record<string, [article: "el" | "la", noun: string]> = {
   "dialysis machine": ["la", "máquina de diálisis"],
   "home dialysis machine": ["la", "máquina de diálisis en casa"],
   nebulizer: ["el", "nebulizador"],
-  ventilator: ["el", "ventilador"],
+  ventilator: ["el", "respirador"],
   "power wheelchair": ["la", "silla de ruedas eléctrica"],
+  "oxygen equipment": ["el", "equipo de oxígeno"],
+  "feeding pump": ["la", "bomba de alimentación"],
+  "suction machine": ["la", "máquina de succión"],
+  "hospital bed": ["la", "cama de hospital"],
+  "refrigerated insulin": ["la", "insulina refrigerada"],
   "electric wheelchair": ["la", "silla de ruedas eléctrica"],
   "insulin refrigerator": ["el", "refrigerador para la insulina"],
   "medical equipment": ["el", "equipo médico"],
@@ -153,7 +166,15 @@ const RELATIONS: Record<string, string> = {
 };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const whose = (name: string) => (name === "the household member" ? "su familiar" : name);
+const RELATIVE_ES: Record<string, string> = {
+  mother: "mamá", father: "papá", wife: "esposa", husband: "esposo", daughter: "hija", son: "hijo", grandmother: "abuela", grandfather: "abuelo",
+};
+/** "Carmen" stays; "your husband" / "the husband" → "su esposo"; "the household member" → "su familiar". */
+const whose = (name: string) => {
+  if (name === "the household member") return "su familiar";
+  const rel = name.match(/^(?:your|the) (\w+)$/)?.[1];
+  return rel && RELATIVE_ES[rel] ? `su ${RELATIVE_ES[rel]}` : name;
+};
 const billEs = (month?: string) => `factura de la luz${month && MONTHS[month] ? ` de ${MONTHS[month]}` : ""}`;
 
 /** Every known phrase inside a longer string, e.g. a comma-joined list of evidence labels. */
@@ -189,6 +210,10 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
   [/^(.+): packet$/, (p) => `${tr(p, "es")}: paquete`],
   // Follow-up fallback question, already Spanish but with an English label inside
   [/^¿Puede compartir: (.+)\?$/, (l) => `¿Puede compartir: ${tr(l, "es")}?`],
+  // Which extractor ran
+  [/^Claude (\d+) · rules (\d+)$/, (c, r) => `Claude ${c} · reglas ${r}`],
+  [/^(?:All (\d+) documents|(\d+) of (\d+) documents) fell back to the offline rules engine because Claude timed out, refused, returned unusable output or errored\. The agent log shows the reason for each\.$/,
+    (all, n, of) => `${all ? `Los ${all} documentos pasaron` : `${n} de ${of} documentos pasaron`} al motor de reglas sin conexión porque Claude tardó demasiado, se negó, dio una respuesta inservible o falló. El registro de los agentes muestra el motivo de cada uno.`],
   // Warnings from the coordinator
   [/^(.+) failed, so (.+)\.$/, (l, note) => `${tr(l, "es")}: falló, así que ${tr(note, "es")}.`],
   [/^(.+) failed \((.+)\)\.$/, (l, msg) => `${tr(l, "es")}: falló (${msg}).`],

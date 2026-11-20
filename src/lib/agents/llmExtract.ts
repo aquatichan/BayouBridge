@@ -36,7 +36,7 @@ Normalization rules for "normalized":
 - deadline: "fema_letter_date:YYYY-MM-DD" for the date on a FEMA letter, "insurance_due:YYYY-MM-DD" for a date the insurer wants documents by
 - money: plain number, no $ or commas
 - damage: "roof_damage" or "interior_water_damage"
-- need: "medical_power" or "food_loss"
+- need: "medical_power" or "food_loss". For medical_power, "value" is the equipment, then who uses it in parentheses: their first name and age if stated, else their relation, e.g. "CPAP machine (Ruth, 78)" or "CPAP machine (husband)"
 - determination: "fema_ineligible_info" for a FEMA insufficient-information decision, "missing:proof_of_occupancy" if occupancy could not be verified
 - exclusion: "flood_excluded" if flood damage is excluded
 - mentions_evidence: "has:<evidence_type>" if the person says they have a document they did not upload, "absent:<evidence_type>" if they say they do not have it. Evidence types: proof_of_occupancy, loss_receipts, proof_of_identity, medical_need_documentation
