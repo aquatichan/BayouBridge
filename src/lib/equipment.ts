@@ -51,3 +51,19 @@ export function equipmentUser(text: string): string | undefined {
   const s = equipmentSentence(text);
   return s ? RELATIVES.find(([re]) => re.test(s))?.[1] : undefined;
 }
+
+/** Words for relatives, in English and Spanish, by the key used in "role:<key>". */
+const KIN: Record<string, string> = {
+  husband: "husband", esposo: "husband", marido: "husband", wife: "wife", esposa: "wife",
+  grandmother: "grandmother", grandma: "grandmother", abuela: "grandmother", abuelita: "grandmother",
+  grandfather: "grandfather", grandpa: "grandfather", abuelo: "grandfather", abuelito: "grandfather",
+  mother: "mother", mom: "mother", mum: "mother", mamá: "mother", mama: "mother", madre: "mother",
+  father: "father", dad: "father", papá: "father", papa: "father", padre: "father",
+  daughter: "daughter", hija: "daughter", son: "son", hijo: "son",
+};
+/** The relatives a household can name, as role keys. */
+export const ROLES = ["mother", "father", "husband", "wife", "son", "daughter", "grandmother", "grandfather"] as const;
+/** Alternation of every relative word, for building patterns. */
+export const KIN_WORDS = Object.keys(KIN).sort((a, b) => b.length - a.length).join("|");
+/** The role key for one word: "esposo" → "husband". */
+export const relativeOf = (w: string): string | undefined => KIN[w.toLowerCase()];

@@ -325,7 +325,7 @@
           "label": "Person named",
           "value": "Ana Reyes",
           "confidence": 0.92,
-          "quote": "Hola, soy Ana Reyes. Se fue la luz cuatro días después del huracán y perdimos toda la comida"
+          "quote": "Hola, soy Ana Reyes."
         },
         {
           "id": "doc-voice-note#f2",
@@ -355,7 +355,7 @@
           "value": "$380",
           "normalized": "380",
           "confidence": 0.8,
-          "quote": "del refrigerador, como 380 dólares. No guardé los recibos de la comida."
+          "quote": "del refrigerador, como 380 dólares."
         },
         {
           "id": "doc-voice-note#f5",
@@ -375,7 +375,7 @@
           "value": "Refrigerated food lost (4-day outage)",
           "normalized": "food_loss",
           "confidence": 0.88,
-          "quote": "Hola, soy Ana Reyes. Se fue la luz cuatro días después del huracán y perdimos toda la comida"
+          "quote": "Se fue la luz cuatro días después del huracán y perdimos toda la comida"
         },
         {
           "id": "doc-voice-note#f7",
@@ -385,7 +385,7 @@
           "value": "Food receipts not available",
           "normalized": "absent:loss_receipts",
           "confidence": 0.8,
-          "quote": "del refrigerador, como 380 dólares. No guardé los recibos de la comida."
+          "quote": "No guardé los recibos de la comida."
         },
         {
           "id": "doc-voice-note#f8",
@@ -875,7 +875,7 @@
       "citations": [
         {
           "factId": "doc-voice-note#f6",
-          "quote": "Hola, soy Ana Reyes. Se fue la luz cuatro días después del huracán y perdimos toda la comida",
+          "quote": "Se fue la luz cuatro días después del huracán y perdimos toda la comida",
           "docId": "doc-voice-note"
         }
       ],

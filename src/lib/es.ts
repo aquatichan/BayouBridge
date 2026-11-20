@@ -65,6 +65,8 @@ const PHRASES: Record<string, string> = {
   "Interior water damage": "Daño por agua dentro de la casa",
   "Food lost in power outage": "Comida perdida por el apagón",
   "Head of household": "Titular del hogar",
+  "FEMA denied the application": "FEMA negó la solicitud",
+  "FEMA letter": "carta de FEMA",
 
   // Document titles
   "Contractor estimate": "Presupuesto del contratista",
@@ -98,6 +100,17 @@ const PHRASES: Record<string, string> = {
   "Property address": "Dirección de la propiedad",
   "Repair estimate total": "Total del presupuesto de reparación",
   "Roof damage": "Daño al techo",
+  Housing: "Vivienda",
+  "No insurance": "Sin seguro",
+  "Has a FEMA letter (not uploaded)": "Tiene una carta de FEMA (sin subir)",
+  // Fixed values the rules extractor writes
+  "Rents the home": "Renta la casa",
+  "Owns the home": "La casa es propia",
+  "Denied (in the household's words)": "Negada (según la familia)",
+  "No insurance policy": "Sin póliza de seguro",
+  "Proof of occupancy": "Comprobante de residencia",
+  "Flood / rising water excluded": "Excluye inundación o crecida de agua",
+  "Food receipts not available": "No hay recibos de la comida",
 
   // Which extractor ran (src/lib/labels.ts)
   Claude: "Claude",
@@ -206,6 +219,14 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
   [/^(?:(\w+) )?electric bill in email$/i, (m) => `${billEs(m)} en su correo`],
   [/^(\w+) electric bill$/, (m) => (MONTHS[m] ? cap(billEs(m)) : undefined)],
   [/^Voice note from (.+?)( \(Spanish\))?$/, (n, sp) => `Nota de voz de ${n}${sp ? " (en español)" : ""}`],
+  // Fact labels and values with a relative or equipment in them
+  [/^Household member \((\w+)\)$/, (r) => (RELATIVE_ES[r] ? `Miembro del hogar (${RELATIVE_ES[r]})` : undefined)],
+  [/^Refrigerated food lost \((?:(\d+)-day outage|power outage)\)$/, (n) => `Comida refrigerada perdida (${n ? `apagón de ${n} días` : "apagón"})`],
+  [/^(.+?) \((\p{Lu}[^,)]*, \d+|\w+(?: member)?)\)$/u, (e, who) => {
+    const known = EQUIPMENT[e.toLowerCase()];
+    if (!known) return undefined;
+    return `${cap(known[1])} (${who === "household member" ? "familiar" : RELATIVE_ES[who] ?? who})`;
+  }],
   // Packets
   [/^(.+): packet$/, (p) => `${tr(p, "es")}: paquete`],
   // Follow-up fallback question, already Spanish but with an English label inside

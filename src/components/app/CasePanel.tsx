@@ -209,7 +209,7 @@ function Doc({ d, s, lang, read, working }: { d: CaseDocument; s: CaseState | nu
       {open && (
         <div className="space-y-2 border-t border-line p-2.5 text-xs">
           {d.text.trim() ? <p className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-bg p-2.5 text-[12px] leading-relaxed">{d.text}</p> : <p className="text-muted">{t.notRead}</p>}
-          {facts.map((f) => <div key={f.id} className="flex justify-between gap-2"><span><b>{tr(f.label, lang)}</b>: {f.value}</span></div>)}
+          {facts.map((f) => <div key={f.id} className="flex justify-between gap-2"><span><b>{tr(f.label, lang)}</b>: {tr(f.value, lang)}</span></div>)}
         </div>
       )}
     </li>

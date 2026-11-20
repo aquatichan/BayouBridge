@@ -1,5 +1,6 @@
 import { EVIDENCE_LABELS } from "@/data/resources";
 import type { CaseDocument, Fact } from "@/lib/types";
+import { ROLES, relativeOf } from "@/lib/equipment";
 import { extractWithRules, parseDate } from "./evidence";
 
 // Evidence Agent - checks Claude's facts before the rules engine sees them.
@@ -131,6 +132,8 @@ function checkNormalized(doc: CaseDocument, f: Fact): Checked {
         [/receipt|recibo/, "loss_receipts"],
         [/\bid\b|license|identity|identifica/, "proof_of_identity"],
         [/doctor|medical|m[eé]dic/, "medical_need_documentation"],
+        [/insurance|seguro|policy|p[oó]liza/, "insurance_policy"],
+        [/fema/, "fema_determination"],
       ]);
       return k ? fix(`${m[1]}:${k}`, `evidence → ${m[1]}:${k}`) : { drop: "unknown evidence type" };
     }
@@ -142,9 +145,19 @@ function checkNormalized(doc: CaseDocument, f: Fact): Checked {
       return d ? fix(`billing_end:${d}`, `billing period → billing_end:${d}`) : { drop: "no readable billing period end" };
     }
     case "person": {
-      if (!n || n === "role:mother" || n === "role:son") return { fact: f };
-      const k = byKeyword(f, [[/mother|madre|mam[aá]/, "role:mother"], [/\bson\b|hijo/, "role:son"], [/applicant|head|self|main|policyholder|customer/, ""]]);
+      if (!n || (n.startsWith("role:") && (ROLES as readonly string[]).includes(n.slice(5)))) return { fact: f };
+      // "role:mom", "esposo", "Household member (daughter)": read the relative from the fact's own words.
+      for (const field of [n, f.label, f.value]) {
+        const role = field.toLowerCase().match(/\p{L}+/gu)?.map(relativeOf).find(Boolean);
+        if (role) return fix(`role:${role}`, `person role → role:${role}`);
+      }
+      const k = byKeyword(f, [[/applicant|head|self|main|policyholder|customer/, ""]]);
       return k !== undefined ? fix(k || undefined, `person role → ${k || "main applicant"}`) : { drop: "unknown household role" };
+    }
+    case "tenure": {
+      if (n === "renter" || n === "owner") return { fact: f };
+      const k = byKeyword(f, [[/rent|tenant|lease|landlord|alquil|inquilin/, "renter"], [/own|deed|mortgage|due[ñn]|propie|hipoteca/, "owner"]]);
+      return k ? fix(k, `tenure → ${k}`) : { drop: "neither renter nor owner" };
     }
     default:
       return { fact: f };

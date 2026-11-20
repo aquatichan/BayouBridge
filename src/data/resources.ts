@@ -17,6 +17,10 @@ export interface ProgramRule {
   nextAction: string;
   source: { label: string; url: string };
   caveat: string;
+  /** Only for households that own the home (a renter's landlord insures and repairs the building). */
+  ownersOnly?: boolean;
+  /** Only when the household may have insurance: skipped if they said they have none and no insurer letter is on file. */
+  needsInsurance?: boolean;
 }
 
 export const EVIDENCE_LABELS: Record<EvidenceType, string> = {
@@ -67,6 +71,8 @@ export const programs: ProgramRule[] = [
     nextAction: "Send the estimate and photos to the adjuster before the inspection.",
     source: { label: "Texas Department of Insurance", url: "https://www.tdi.texas.gov" },
     caveat: "Possible match. Coverage depends on the policy. TDI can help if the household has a dispute.",
+    ownersOnly: true,
+    needsInsurance: true,
   },
   {
     id: "sba-home-loan",
@@ -85,6 +91,7 @@ export const programs: ProgramRule[] = [
     nextAction: "Talk with the family about whether a loan fits. Do not apply without their decision.",
     source: { label: "SBA: Disaster assistance", url: "https://www.sba.gov/funding-programs/disaster-assistance" },
     caveat: "Possible match. A loan must be repaid. The household decides whether to apply.",
+    ownersOnly: true, // this pathway is the home-repair loan; renters' personal-property loans are not modeled yet
   },
   {
     id: "critical-care",
