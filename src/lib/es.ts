@@ -51,6 +51,7 @@ const PHRASES: Record<string, string> = {
   "Insurance policy declarations page": "Página de declaraciones de la póliza de seguro",
   "Proof of occupancy (utility bill, lease, or bank statement)": "Comprobante de residencia (factura de servicios, contrato de renta o estado de cuenta)",
   "Photo ID": "Identificación con foto",
+  "Proof of ownership (deed, mortgage statement or property tax bill)": "Prueba de propiedad (escritura, estado de hipoteca o recibo del impuesto)",
   "Statement describing losses": "Declaración de las pérdidas",
   "Receipts for lost items": "Recibos de las cosas perdidas",
   "Medical documentation of power-dependent equipment": "Documentación médica del equipo que necesita electricidad",
@@ -95,6 +96,7 @@ const PHRASES: Record<string, string> = {
   "Household lost refrigerated food during the outage": "La familia perdió comida refrigerada durante el apagón",
 
   // Document titles (the sample households)
+  "Mortgage statement": "Estado de hipoteca",
   "Doctor's critical care form": "Formulario de cuidado crítico del médico",
   "Driver license": "Licencia de conducir",
   "Kids' bedroom ceiling photo": "Foto del techo del cuarto de los niños",
@@ -268,6 +270,7 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
   [/^(.+) water damage$/, (r) => (ROOMS[r.toLowerCase()] ? `Daño por agua en ${ROOMS[r.toLowerCase()]}` : undefined)],
   [/^(.+) water damage photo$/, (r) => (ROOMS[r.toLowerCase()] ? `Foto del daño por agua en ${ROOMS[r.toLowerCase()]}` : undefined)],
   // People: "Mother, 71, uses oxygen"
+  [/^Household member(?:, (\d+))?(?:, uses (.+))?$/, (age, e) => ["Miembro del hogar", age, e && `usa ${equip(e)[1]}`].filter(Boolean).join(", ")],
   [/^(\w+)(?:, (\d+))?(?:, uses (.+))?$/, (rel, age, e) =>
     RELATIONS[rel] ? [RELATIONS[rel], age, e && `usa ${equip(e)[1]}`].filter(Boolean).join(", ") : undefined],
   // Plan
@@ -341,6 +344,7 @@ const KIND_TITLES: Record<string, string> = Object.fromEntries(Object.values(TYP
 export function spanish(text: string): string | undefined {
   if (text in PHRASES) return PHRASES[text];
   if (text in KIND_TITLES) return KIND_TITLES[text];
+  if (text in RELATIONS) return RELATIONS[text]; // an unnamed relative shown by relation
   for (const [re, fn] of PATTERNS) {
     const m = text.match(re);
     if (m) {

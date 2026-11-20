@@ -47,7 +47,7 @@ test("approval gate is enforced on the server", async (t) => {
     assert(items[0].packet.bilingualCover.es.length > 0);
   });
   await t.test("approvals survive a re-run that changes the plan (stable task ids)", async () => {
-    const after = await runDemoCase({ addDocumentIds: ["doc-electric-bill"] });
+    const after = await runDemoCase({ addDocumentIds: ["doc-electric-bill", "doc-reyes-deed"] });
     assert.equal(after.plan.find((x) => x.id === "task:insurance-claim")?.approved, true);
     assert.equal((await post({ caseId: "BB-0417", taskId: "task:fema-appeal" })).status, 200);
   });

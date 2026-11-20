@@ -35,6 +35,7 @@ export const EVIDENCE_LABELS: Record<EvidenceType, string> = {
   insurance_policy: "Insurance policy declarations page",
   proof_of_occupancy: "Proof of occupancy (utility bill, lease, or bank statement)",
   proof_of_identity: "Photo ID",
+  proof_of_ownership: "Proof of ownership (deed, mortgage statement or property tax bill)",
   loss_statement: "Statement describing losses",
   loss_receipts: "Receipts for lost items",
   medical_need_documentation: "Medical documentation of power-dependent equipment",
@@ -46,13 +47,13 @@ export const programs: ProgramRule[] = [
     name: "FEMA Individual Assistance appeal",
     agency: "FEMA",
     summary:
-      "Applicants can appeal a FEMA decision and send missing documents, such as proof of occupancy.",
+      "FEMA appeals are a signed letter sent within 60 days, with the registration and disaster numbers and documents such as proof of occupancy and, for owners, ownership.",
     triggers: [{ need: "fema_denial", description: "FEMA letter says ineligible for insufficient information" }],
     requires: [
       { type: "fema_determination", label: EVIDENCE_LABELS.fema_determination },
       { type: "proof_of_occupancy", label: EVIDENCE_LABELS.proof_of_occupancy },
       { type: "damage_photo", label: EVIDENCE_LABELS.damage_photo },
-      { type: "repair_estimate", label: EVIDENCE_LABELS.repair_estimate },
+      { type: "proof_of_ownership", label: EVIDENCE_LABELS.proof_of_ownership },
     ],
     requiresForRenters: [
       { type: "fema_determination", label: EVIDENCE_LABELS.fema_determination },

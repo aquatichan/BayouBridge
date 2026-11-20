@@ -126,7 +126,7 @@ export default function CasePanel(props: {
             <h3 className="text-sm font-semibold text-muted">{t.people}</h3>
             <ul className="space-y-1.5">{s.people.map((p) => (
               <li key={p.name} className="flex items-start justify-between gap-2 text-sm">
-                <div><b>{p.name}</b>{p.aliases.length > 0 && <div className="text-xs text-amber">= {p.aliases.join(", ")}</div>}</div>
+                <div><b>{tr(p.name, lang)}</b>{p.aliases.length > 0 && <div className="text-xs text-amber">= {p.aliases.join(", ")}</div>}</div>
                 <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-xs text-muted">{tr(p.role, lang)}</span>
               </li>))}
             </ul>
@@ -353,6 +353,13 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
                     <p className="mt-1.5"><b>{t.to}:</b> {tr(p.to, lang)}</p>
                     <p className="mt-0.5"><b>{t.attached}:</b> {p.attachments.map((a) => tr(a.title, lang)).join(", ")}</p>
                     <p className="mt-1.5 leading-relaxed text-ink">{p.bilingualCover[lang]}</p>
+                    {p.letter && (
+                      <>
+                        <p className="mt-2 font-semibold">{t.letterTitle}</p>
+                        <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-panel p-2 font-sans text-[11px] leading-relaxed">{p.letter[lang]}</pre>
+                        <p className="mt-1 text-[11px] text-amber">{t.letterSign}</p>
+                      </>
+                    )}
                     <p className="mt-1.5 text-[11px] text-muted">{t.previewNote}</p>
                   </details>
                 );

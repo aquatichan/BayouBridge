@@ -600,14 +600,12 @@
           ]
         },
         {
-          "type": "repair_estimate",
-          "label": "Contractor repair estimate",
-          "satisfiedBy": [
-            "doc-estimate"
-          ]
+          "type": "proof_of_ownership",
+          "label": "Proof of ownership (deed, mortgage statement or property tax bill)",
+          "satisfiedBy": []
         }
       ],
-      "readiness": 0.75,
+      "readiness": 0.5,
       "deadline": {
         "date": "2026-12-27",
         "basis": "60 days from the date on the FEMA letter"
@@ -615,7 +613,8 @@
       "nextAction": "Prepare a signed appeal letter with proof of occupancy attached.",
       "blocked": true,
       "blockedBy": [
-        "Proof of occupancy (utility bill, lease, or bank statement)"
+        "Proof of occupancy (utility bill, lease, or bank statement)",
+        "Proof of ownership (deed, mortgage statement or property tax bill)"
       ],
       "source": {
         "label": "FEMA: Individual Assistance",
@@ -716,7 +715,7 @@
       "caveat": "Referral only. Disaster food benefits are available only when the state activates them."
     }
   ],
-  "evidenceScore": 63,
+  "evidenceScore": 56,
   "followUp": {
     "evidence": "proof_of_occupancy",
     "unblocks": [
@@ -779,7 +778,7 @@
       "priority": 2.39,
       "programId": "fema-appeal",
       "status": "blocked",
-      "detail": "Waiting on: Proof of occupancy (utility bill, lease, or bank statement)",
+      "detail": "Waiting on: Proof of occupancy (utility bill, lease, or bank statement), Proof of ownership (deed, mortgage statement or property tax bill)",
       "requiresApproval": true
     },
     {
@@ -970,13 +969,19 @@
         "id": "program:fema-appeal",
         "kind": "program",
         "label": "FEMA Individual Assistance appeal",
-        "sub": "75% ready"
+        "sub": "50% ready"
       },
       {
         "id": "missing:proof_of_occupancy",
         "kind": "missing",
         "label": "Proof of occupancy (utility bill, lease, or bank statement)",
         "sub": "Household has it: September electric bill in email"
+      },
+      {
+        "id": "missing:proof_of_ownership",
+        "kind": "missing",
+        "label": "Proof of ownership (deed, mortgage statement or property tax bill)",
+        "sub": "Not on file"
       },
       {
         "id": "deadline:fema-appeal",
@@ -1087,6 +1092,11 @@
         "relation": "blocks"
       },
       {
+        "from": "missing:proof_of_ownership",
+        "to": "program:fema-appeal",
+        "relation": "blocks"
+      },
+      {
         "from": "program:fema-appeal",
         "to": "deadline:fema-appeal",
         "relation": "due"
@@ -1135,11 +1145,11 @@
     "[Coordinator] Built needs list: Oxygen concentrator needs reliable power (critical) · Roof wind damage (tarped, not repaired) (high) · FEMA said ineligible: occupancy not verified (high) · Living room water damage (medium) · Food lost in 4-day outage (medium)",
     "[Evidence Agent] Checked for conflicts: Date of loss, Policyholder name disagree across documents.",
     "[Recovery-Match Agent] Matched recovery pathways: 5 possible matches from the verified source list: Homeowners insurance claim (wind damage), FEMA Individual Assistance appeal, SBA disaster home loan, Critical care electric customer designation, Food and immediate-needs referral (2-1-1 Texas).",
-    "[Follow-up Agent] Scored evidence: 63% of required evidence is on file. Best next ask: proof of occupancy.",
+    "[Follow-up Agent] Scored evidence: 56% of required evidence is on file. Best next ask: proof of occupancy.",
     "[Coordinator] Built recovery plan: 8 tasks, 3 blocked on missing evidence.",
     "[Packet Agent] Drafted packet for Homeowners insurance claim (wind damage): 4 attachments, 5 cited facts, English and Spanish cover note. Held as a draft.",
     "[Packet Agent] Drafted packet for Food and immediate-needs referral (2-1-1 Texas): 1 attachment, 1 cited fact, English and Spanish cover note. Held as a draft.",
-    "[Coordinator] Updated recovery graph: 21 nodes, 21 links.",
+    "[Coordinator] Updated recovery graph: 22 nodes, 22 links.",
     "[Safety Agent] Applied approval gates: 2 outbound actions held for navigator approval. Nothing is sent or submitted automatically.",
     "[Coordinator] Run complete: About 142 minutes of manual casework done (estimate)."
   ],

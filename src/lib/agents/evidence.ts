@@ -401,6 +401,7 @@ export function classify(doc: CaseDocument, facts: Fact[], ctx?: ClassifyContext
   if (doc.kind === "insurance_email") out.add("insurance_correspondence");
   if (OCCUPANCY_KINDS.includes(doc.kind) && ctx && occupancyCheck(facts, ctx, doc.kind).ok) out.add("proof_of_occupancy");
   if (doc.kind === "id_card") out.add("proof_of_identity");
+  if (doc.kind === "deed") out.add("proof_of_ownership");
   if (doc.kind === "insurance_policy") out.add("insurance_policy");
   if (doc.kind === "medical_letter") out.add("medical_need_documentation");
   if (doc.kind === "receipt") out.add("loss_receipts");

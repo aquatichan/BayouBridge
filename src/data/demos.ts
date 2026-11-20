@@ -32,6 +32,7 @@ const doc = (d: Omit<CaseDocument, "language" | "mime"> & { mime?: string; langu
 
 const reyesFollowUps: FollowUpDoc[] = [
   { doc: reyesBill[0], provides: "proof_of_occupancy" },
+  { doc: reyesBill[1], provides: "proof_of_ownership" },
   {
     provides: "medical_need_documentation",
     doc: doc({

@@ -16,15 +16,15 @@ test("rules-mode demo run matches the golden snapshot", async () => {
   assert.deepEqual(view, JSON.parse(readFileSync(FIXTURE, "utf8")));
 });
 
-test("headline numbers: 6 docs, FEMA appeal 75% and blocked on proof of occupancy", async () => {
+test("headline numbers: 6 docs, FEMA appeal 50%, blocked on proof of occupancy and ownership", async () => {
   const s = await runCase(base);
   const fema = s.matches.find((m) => m.programId === "fema-appeal")!;
   assert.equal(s.extractions.length, 6);
-  assert.equal(fema.readiness, 0.75);
-  assert.deepEqual(fema.blockedBy, ["Proof of occupancy (utility bill, lease, or bank statement)"]);
+  assert.equal(fema.readiness, 0.5);
+  assert.deepEqual(fema.blockedBy, ["Proof of occupancy (utility bill, lease, or bank statement)", "Proof of ownership (deed, mortgage statement or property tax bill)"]);
   assert.equal(fema.deadline?.date, "2026-12-27");
   assert.equal(s.followUp?.evidence, "proof_of_occupancy");
-  assert.equal(s.evidenceScore, 63);
+  assert.equal(s.evidenceScore, 56);
   assert.deepEqual(s.extraction, { claude: 0, rules: 6, fellBack: 0, mode: "rules" });
 });
 
@@ -46,7 +46,7 @@ test("a bill from after the storm, or for another address, is not proof of occup
   const other = { ...bill, id: "doc-other", text: bill.text.replace("1847 Cypress Bayou Ln", "22 Magnolia Dr") };
   for (const d of [late, other]) {
     const s = await runCase({ ...base, documents: [...base.documents, d] });
-    assert.equal(s.matches.find((m) => m.programId === "fema-appeal")!.readiness, 0.75, d.id);
+    assert.equal(s.matches.find((m) => m.programId === "fema-appeal")!.readiness, 0.5, d.id);
     assert(s.events.some((e) => e.action === "Occupancy not verified"), d.id);
   }
 });
