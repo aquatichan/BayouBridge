@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import type { ActivityEvent, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
-import { FilePicker } from "./Onboarding";
+import { KIND_FOR_EVIDENCE } from "@/lib/typedKinds";
+import { DropZone, FilePicker, TypedDocEditor, type TypedDoc } from "./Onboarding";
 import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
@@ -26,12 +27,17 @@ export default function CasePanel(props: {
   /** Which extractor actually read the documents in the last run (null until a run finishes). */
   mode: ExtractionSummary | null; approving: string | null; approveError: string | null;
   onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void; onBill: () => void;
+  /** The household typed out a document. */
+  onType: (d: TypedDoc) => void;
+  /** Files are on their way to the server (before the agents start reading). */
+  uploading: boolean;
   /** Desktop only: fold the sidebar away. */
   onCollapse?: () => void;
 }) {
   const { s, events, running, lang, outbox } = props;
   const t = STRINGS[lang];
   const [tab, setTab] = useState<Tab>("next");
+  const [typing, setTyping] = useState(false);
   const has = (action: string) => events.some((e) => e.action === action);
   const read = new Set(events.filter((e) => /^(Read|Reused) /.test(e.action)).flatMap((e) => e.refs ?? []));
   const docs = s?.documents ?? [];
@@ -57,7 +63,13 @@ export default function CasePanel(props: {
       )}
       </div>
 
+      <DropZone lang={lang} onDrop={props.onUpload} disabled={props.sample || !s || running || props.uploading} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        {props.uploading && (
+          <p role="status" className="flex items-center gap-2 rounded-2xl bg-bayou-soft p-3 text-sm font-semibold text-tide">
+            <span aria-hidden className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />{t.sending}
+          </p>
+        )}
         {tab === "next" && <NextSteps {...props} has={has} read={read} />}
 
         {tab === "programs" && (s && has("Matched recovery pathways") ? s.matches.map((m) => (
@@ -87,7 +99,15 @@ export default function CasePanel(props: {
               </p>
             )}
             <ul className="space-y-1.5">{docs.map((d) => <Doc key={d.id} d={d} s={s} lang={lang} read={read.has(d.id)} working={props.tasks[`extract:${d.id}`]?.status === "started"} />)}</ul>
-            {!props.sample && s && <FilePicker lang={lang} onPick={props.onUpload} label={`＋ ${t.addMore}`} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-bg" />}
+            {!props.sample && s && (
+              <div className="flex flex-wrap items-center gap-2">
+                <FilePicker lang={lang} onPick={props.onUpload} label={`＋ ${t.addMore}`} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-bg" />
+                <button type="button" onClick={() => setTyping((v) => !v)} aria-expanded={typing} disabled={running || props.uploading}
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-bg disabled:opacity-50">⌨ {t.typeDoc}</button>
+                <span className="hidden text-[11px] text-muted md:inline">{t.orDrag}</span>
+              </div>
+            )}
+            {typing && <TypedDocEditor lang={lang} onAdd={(d) => { setTyping(false); props.onType(d); }} onCancel={() => setTyping(false)} />}
           </>
         )}
 
@@ -122,6 +142,7 @@ export default function CasePanel(props: {
 
         {running && tab !== "next" && <p className="text-center text-[11px] text-muted">{t.working}…</p>}
       </div>
+      </DropZone>
     </section>
   );
 }
@@ -130,8 +151,9 @@ function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-function NextSteps({ s, events, running, lang, sample, billPending, approving, approveError, onApprove, onUpload, onBill, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
+function NextSteps({ s, events, running, lang, sample, billPending, approving, approveError, onApprove, onUpload, onType, uploading, onBill, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
   const t = STRINGS[lang];
+  const [typing, setTyping] = useState(false);
   const total = s?.documents.length ?? 0;
   const latest = events.at(-1);
   return (
@@ -161,8 +183,20 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
           <div className="mt-2">
             {sample
               ? billPending && <button disabled={running} onClick={onBill} className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-night disabled:opacity-50">💡 {t.billArrives}</button>
-              : <FilePicker lang={lang} onPick={onUpload} label={`📎 ${t.uploadIt}`} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white" />}
+              : (
+                <div className="flex flex-wrap gap-2">
+                  <FilePicker lang={lang} onPick={onUpload} label={`📎 ${t.uploadIt}`} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white" />
+                  <button type="button" onClick={() => setTyping((v) => !v)} aria-expanded={typing} disabled={running || uploading}
+                    className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-bg disabled:opacity-50">⌨ {t.typeIt}</button>
+                </div>
+              )}
           </div>
+          {!sample && typing && (
+            <div className="mt-2">
+              <TypedDocEditor key={s.followUp.evidence} lang={lang} initialKind={KIND_FOR_EVIDENCE[s.followUp.evidence]}
+                onAdd={(d) => { setTyping(false); onType(d); }} onCancel={() => setTyping(false)} />
+            </div>
+          )}
         </div>
       )}
 

@@ -18,7 +18,8 @@ export type DocKind =
   | "other";
 
 /** Kinds that can prove someone lived at the address before the storm (with a period that ends before the date of loss). */
-export const OCCUPANCY_KINDS: DocKind[] = ["utility_bill", "bank_statement"];
+/** A lease counts too, for its address (FEMA accepts a lease as proof of occupancy). */
+export const OCCUPANCY_KINDS: DocKind[] = ["utility_bill", "bank_statement", "lease"];
 
 /** Evidence categories that recovery programs ask for. */
 export type EvidenceType =
@@ -46,7 +47,8 @@ export interface CaseDocument {
   /** Optional illustration shown in the UI (photos). */
   preview?: string;
   /** Where it came from. Uploaded files are read by Claude, which fills in kind, title and text. */
-  source?: "sample" | "upload" | "statement";
+  /** "typed": the household typed out what a document says (any kind), instead of uploading it. */
+  source?: "sample" | "upload" | "statement" | "typed";
 }
 
 export type FactType =

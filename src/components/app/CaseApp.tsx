@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Office from "@/components/office/Office";
 import Image from "next/image";
-import { shrinkImage } from "@/lib/client/files";
+import { MAX_FILES, shrinkImage } from "@/lib/client/files";
 import { RunError, streamRun } from "@/lib/client/stream";
 import { OfficeDirector } from "@/lib/office/director";
 import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import CasePanel from "./CasePanel";
-import { Consent, Home, Upload, Welcome } from "./Onboarding";
+import { checkFiles, Consent, Home, Upload, Welcome, type TypedDoc } from "./Onboarding";
 import { tr } from "@/lib/es";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import { STRINGS, type Lang } from "./i18n";
@@ -91,6 +91,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const [mode, setMode] = useState<ExtractionSummary | null>(null);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [running, setRunning] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -185,34 +186,42 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
-  async function sendFiles(id: string, files: File[], statement = "") {
+  async function sendFiles(id: string, files: File[], statement = "", typed: TypedDoc[] = []) {
     const form = new FormData();
     for (const f of await Promise.all(files.map(shrinkImage))) form.append("files", f);
     if (statement.trim()) form.append("statement", statement);
+    if (typed.length) form.append("typed", JSON.stringify(typed));
     const res = await fetch(`/api/cases/${id}/documents`, { method: "POST", body: form });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error((data as { error?: string }).error ?? `Upload failed (${res.status})`);
     return (data as { documents: unknown[] }).documents.length;
   }
 
-  async function upload(files: File[], statement: string) {
+  async function upload(files: File[], statement: string, typed: TypedDoc[]) {
     if (!caseId) return;
     setBusy(true); setError(null);
     try {
-      const n = await sendFiles(caseId, files, statement);
+      const n = await sendFiles(caseId, files, statement, typed);
       setStep("office");
       await run(caseId, { newDocs: n });
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
-  /** A document arrives later (the one the Follow-up Agent asked for): read just it, then update the case. */
-  async function followUp(files: File[]) {
-    if (!caseId || !files.length) return;
-    setError(null);
+  /** A document arrives later (the one the Follow-up Agent asked for, or any other): read just it, then update the case. */
+  async function followUp(picked: File[], typed: TypedDoc[] = []) {
+    if (!caseId || running || uploading) return;
+    const uploaded = state?.documents.filter((d) => d.source === "upload").length ?? 0;
+    const { ok, problems } = checkFiles(picked, lang, MAX_FILES - uploaded);
+    setError(problems.length ? problems.join(" ") : null); setNotice(null);
+    if (!ok.length && !typed.length) return;
+    setUploading(true);
     try {
-      const n = await sendFiles(caseId, files);
+      const n = await sendFiles(caseId, ok, "", typed);
+      setUploading(false);
+      setNotice(t.added(n));
       await run(caseId, { incremental: true, newDocs: n });
-    } catch (e) { setError((e as Error).message); }
+      setNotice(null);
+    } catch (e) { setError((e as Error).message); } finally { setUploading(false); }
   }
 
   async function approve(task: PlanTask) {
@@ -303,7 +312,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
 
       {(error || notice) && (
         <div role="alert" className="fixed inset-x-0 top-16 z-50 mx-auto w-fit max-w-[92vw] rounded-full bg-ink px-4 py-2 text-xs text-night shadow-lg md:top-4">
-          {error ? `${t.error}: ${error}` : notice}
+          {error ? `${t.error}: ${tr(error, lang)}` : notice}
           <button onClick={() => { setError(null); setNotice(null); }} className="ml-3 opacity-70" aria-label="Dismiss">✕</button>
         </div>
       )}
@@ -335,7 +344,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
             <CasePanel
               s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample} mode={mode}
               billPending={billPending} approving={approving} approveError={approveError}
-              onApprove={approve} onUpload={followUp}
+              onApprove={approve} onUpload={(files) => followUp(files)} onType={(d) => followUp([], [d])} uploading={uploading}
               onBill={() => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: ["doc-electric-bill"] })}
               onCollapse={wide ? () => setCollapsed(true) : undefined}
             />
