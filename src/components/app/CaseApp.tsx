@@ -10,7 +10,8 @@ import { OfficeDirector } from "@/lib/office/director";
 import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import CasePanel from "./CasePanel";
 import { checkFiles, Consent, Home, SamplePicker, Upload, Welcome, type TypedDoc } from "./Onboarding";
-import type { DemoId } from "@/data/demoList";
+import { DEMO_CARDS, type DemoId } from "@/data/demoList";
+import type { Paper } from "./CasePanel";
 import { tr } from "@/lib/es";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import { STRINGS, type Lang } from "./i18n";
@@ -23,6 +24,7 @@ type Step = "welcome" | "samples" | "consent" | "home" | "upload" | "office";
 /** A sample household's "a document arrives" moments: which document fills which gap. */
 type SampleFollowUp = { id: string; title: string; provides: string };
 const SESSION_KEY = "bayoubridge.case";
+const PAPER_ICONS: Record<string, string> = { proof_of_occupancy: "🧾", proof_of_identity: "🪪", medical_need_documentation: "🩺" };
 const LANG_KEY = "bayoubridge.lang";
 const SIDE_MIN = 340, SIDE_MAX = 640, SIDE_RAIL = 56; // desktop sidebar: resizable between min/max, or collapsed to a rail
 const SIDE_KEY = "bayoubridge.sidebar";
@@ -89,6 +91,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
   const [sample, setSample] = useState(false);
   const [household, setHousehold] = useState<{ name: string; address: string } | null>(null);
   const [followUps, setFollowUps] = useState<SampleFollowUp[]>([]);
+  const [demoId, setDemoId] = useState<DemoId | null>(null);
   const [state, setState] = useState<CaseState | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [tasks, setTasks] = useState<Record<string, TaskUpdate>>({});
@@ -115,8 +118,8 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     if (!id) return;
     fetch(`/api/cases/${id}`).then(async (r) => {
       if (!r.ok) { store.del(SESSION_KEY); return; }
-      const d = (await r.json()) as { profile: { name: string; address: string; sample: boolean }; state: CaseState | null; followUps: SampleFollowUp[] };
-      setCaseId(id); setSample(d.profile.sample); setHousehold(d.profile); setFollowUps(d.followUps ?? []);
+      const d = (await r.json()) as { profile: { name: string; address: string; sample: boolean; demo?: DemoId }; state: CaseState | null; followUps: SampleFollowUp[] };
+      setCaseId(id); setSample(d.profile.sample); setHousehold(d.profile); setFollowUps(d.followUps ?? []); setDemoId(d.profile.demo ?? null);
       if (d.state) {
         setState(d.state); setMode(d.state.extraction); setEvents(d.state.events); setStep("office");
         fetch(`/api/outbox?caseId=${id}`).then((x) => x.json()).then((o: { items: OutboxItem[] }) => setOutbox(o.items)).catch(() => {});
@@ -176,7 +179,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
       const d = await postJSON<{ caseId: string; profile: { name: string; address: string }; followUps: SampleFollowUp[]; documentCount: number }>(
         "/api/cases", { sample: true, demo: which, language: lang });
       store.set(SESSION_KEY, d.caseId);
-      setCaseId(d.caseId); setSample(true); setHousehold(d.profile); setFollowUps(d.followUps); setOutbox([]);
+      setCaseId(d.caseId); setSample(true); setHousehold(d.profile); setFollowUps(d.followUps); setDemoId(which); setOutbox([]);
       setStep("office");
       await run(d.caseId, { newDocs: d.documentCount });
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -265,15 +268,22 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     setMenu(false);
     if (caseId) await fetch(`/api/cases/${caseId}`, { method: "DELETE" }).catch(() => {});
     store.del(SESSION_KEY);
-    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null); setFollowUps([]);
+    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null); setFollowUps([]); setDemoId(null);
     director.newRun(0);
     setStep("welcome");
     if (!sample) setNotice(t.deleted);
   }
 
   const minutes = events.reduce((n, e) => n + (e.minutesSaved ?? 0), 0);
-  // In a sample case, the document that fills the gap the Follow-up Agent asked about can "arrive".
-  const nextSample = (sample && state?.followUp && followUps.find((f) => f.provides === state.followUp!.evidence && !state.documents.some((d) => d.id === f.id))) || null;
+  // "Your papers" in a sample case: the documents still to come, with the household's decoys mixed in.
+  const papers: Paper[] = useMemo(() => {
+    if (!sample || !state) return [];
+    const real = followUps.filter((f) => !state.documents.some((d) => d.id === f.id))
+      .map((f) => ({ key: f.id, id: f.id, provides: f.provides, icon: PAPER_ICONS[f.provides] ?? "📄", title: tr(f.title, lang) }));
+    if (!real.length) return [];
+    const decoys = (DEMO_CARDS.find((c) => c.id === demoId)?.decoys ?? []).map((x, i) => ({ key: `decoy-${i}`, icon: x.icon, title: x.title[lang] }));
+    return real.flatMap((p, i) => (decoys[i] ? [p, decoys[i]] : [p])).concat(decoys.slice(real.length)); // interleaved, so the answer isn't always first
+  }, [sample, state, followUps, demoId, lang]);
   const inOffice = step === "office";
   const sideOpen = !collapsed;
   const side = inOffice && wide ? (sideOpen ? sideW : SIDE_RAIL) : 0;
@@ -363,7 +373,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
           ) : (
             <CasePanel
               s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample} mode={mode}
-              nextSample={nextSample} approving={approving} approveError={approveError} onResolve={resolve}
+              papers={papers} approving={approving} approveError={approveError} onResolve={resolve}
               onApprove={approve} onUpload={(files) => followUp(files)} onType={(d) => followUp([], [d])} uploading={uploading}
               onArrive={(id) => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: [id] })}
               onCollapse={wide ? () => setCollapsed(true) : undefined}

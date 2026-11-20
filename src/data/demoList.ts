@@ -13,6 +13,8 @@ export interface DemoCard {
   home: { en: string; es: string };
   money: { en: string; es: string };
   damage: { en: string; es: string };
+  /** Papers in the household's pile that don't help any step: the wrong answers in "Your papers". */
+  decoys: { icon: string; title: { en: string; es: string } }[];
 }
 
 export const DEMO_CARDS: DemoCard[] = [
@@ -24,6 +26,10 @@ export const DEMO_CARDS: DemoCard[] = [
     home: { en: "Owns a brick house in Aldine. Homeowners insurance.", es: "Dueña de una casa de ladrillo en Aldine. Seguro de vivienda." },
     money: { en: "About $3,800 a month from Ana's job as a school bus driver", es: "Unos $3,800 al mes del trabajo de Ana como chofer de autobús escolar" },
     damage: { en: "Roof torn open, living room flooded, Carmen's oxygen lost power. FEMA said no.", es: "Techo abierto, sala inundada, el oxígeno de Carmen se quedó sin luz. FEMA dijo que no." },
+    decoys: [
+      { icon: "🛒", title: { en: "Grocery store receipt", es: "Recibo del supermercado" } },
+      { icon: "🚗", title: { en: "Car insurance card", es: "Tarjeta del seguro del carro" } },
+    ],
   },
   {
     id: "johnson",
@@ -33,6 +39,10 @@ export const DEMO_CARDS: DemoCard[] = [
     home: { en: "Rents an apartment in the East End. No renters insurance.", es: "Renta un apartamento en el East End. Sin seguro de inquilino." },
     money: { en: "About $2,350 a month as a cashier, paid every two weeks", es: "Unos $2,350 al mes como cajera, con pago cada dos semanas" },
     damage: { en: "Rain through the kids' ceiling, mold, food lost. Amara's nebulizer needs power. FEMA said no.", es: "Lluvia por el techo del cuarto de los niños, moho, comida perdida. El nebulizador de Amara necesita luz. FEMA dijo que no." },
+    decoys: [
+      { icon: "🏫", title: { en: "School picture day form", es: "Formulario del día de fotos escolares" } },
+      { icon: "🎟️", title: { en: "Library card", es: "Tarjeta de la biblioteca" } },
+    ],
   },
   {
     id: "nguyen",
@@ -42,6 +52,10 @@ export const DEMO_CARDS: DemoCard[] = [
     home: { en: "Own their house outright in Gulfton. Insured, with a $4,800 hurricane deductible.", es: "Dueños de su casa ya pagada en Gulfton. Asegurados, con un deducible por huracán de $4,800." },
     money: { en: "About $2,900 a month from Social Security, $6,400 in savings", es: "Unos $2,900 al mes del Seguro Social, $6,400 en ahorros" },
     damage: { en: "An oak tree crushed the garage, the roof lost shingles, rain in the back bedroom.", es: "Un roble aplastó el garaje, el techo perdió tejas y entró lluvia al cuarto de atrás." },
+    decoys: [
+      { icon: "⛽", title: { en: "Gas station receipt", es: "Recibo de la gasolinera" } },
+      { icon: "📰", title: { en: "Church bulletin", es: "Boletín de la iglesia" } },
+    ],
   },
 ];
 
