@@ -12,7 +12,7 @@ import { STRINGS, type Lang } from "./i18n";
 
 const ICON: Record<CaseDocument["kind"], string> = {
   photo: "📷", estimate: "🧾", fema_letter: "✉️", insurance_email: "📧", voice_note: "🗣️", utility_bill: "💡",
-  bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", other: "📎",
+  bank_statement: "🏦", lease: "🏠", id_card: "🪪", insurance_policy: "📄", medical_letter: "🩺", receipt: "🧾", deed: "📜", other: "📎",
 };
 
 type Tab = "next" | "programs" | "docs" | "household" | "outbox";
@@ -23,10 +23,15 @@ function fmt(iso: string, lang: Lang) {
 
 export default function CasePanel(props: {
   s: CaseState | null; events: ActivityEvent[]; tasks: Record<string, TaskUpdate>; running: boolean; lang: Lang;
-  outbox: OutboxItem[]; sample: boolean; billPending: boolean;
+  outbox: OutboxItem[]; sample: boolean;
+  /** A sample case's next document, ready to "arrive" for the current ask. */
+  nextSample: { id: string; title: string } | null;
+  onArrive: (docId: string) => void;
+  /** The household confirms one value of a conflict. */
+  onResolve: (conflictId: string, value: string) => void;
   /** Which extractor actually read the documents in the last run (null until a run finishes). */
   mode: ExtractionSummary | null; approving: string | null; approveError: string | null;
-  onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void; onBill: () => void;
+  onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void;
   /** The household typed out a document. */
   onType: (d: TypedDoc) => void;
   /** Files are on their way to the server (before the agents start reading). */
@@ -127,7 +132,11 @@ export default function CasePanel(props: {
               </li>))}
             </ul>
             {s.conflicts.length > 0 && <h3 className="pt-2 text-sm font-semibold text-muted">{t.conflicts}</h3>}
-            {s.conflicts.map((c) => <p key={c.id} className="rounded-xl bg-amber-soft/60 p-2.5 text-sm">{c.question[lang]}</p>)}
+            {s.conflicts.map((c) => (
+              <p key={c.id} className={`rounded-xl p-2.5 text-sm ${c.resolved ? "bg-moss/15" : "bg-amber-soft/60"}`}>
+                {c.question[lang]}{c.resolved && <b className="mt-1 block text-xs text-ink">✓ {t.confirmed}: {c.resolved}</b>}
+              </p>
+            ))}
           </>
         ) : <Waiting>{t.waitingResults}</Waiting>)}
 
@@ -151,7 +160,7 @@ function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-function NextSteps({ s, events, running, lang, sample, billPending, approving, approveError, onApprove, onUpload, onType, uploading, onBill, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
+function NextSteps({ s, events, running, lang, sample, nextSample, approving, approveError, onApprove, onUpload, onType, uploading, onArrive, onResolve, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
   const t = STRINGS[lang];
   const [typing, setTyping] = useState(false);
   const total = s?.documents.length ?? 0;
@@ -182,7 +191,7 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
           <p className="mt-1 text-[11px] text-muted">{tr(s.followUp.why, lang)}</p>
           <div className="mt-2">
             {sample
-              ? billPending && <button disabled={running} onClick={onBill} className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-night disabled:opacity-50">💡 {t.billArrives}</button>
+              ? nextSample && <button disabled={running} onClick={() => onArrive(nextSample.id)} className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-night disabled:opacity-50">📬 {t.arrives(tr(nextSample.title, lang))}</button>
               : (
                 <div className="flex flex-wrap gap-2">
                   <FilePicker lang={lang} onPick={onUpload} label={`📎 ${t.uploadIt}`} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white" />
@@ -200,6 +209,13 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
         </div>
       )}
 
+      {s && !running && s.plan.length > 0 && s.matches.every((m) => m.readiness === 1) && s.plan.every((x) => x.status === "done" || x.approved) && (
+        <div role="status" className="rounded-2xl border border-moss/50 bg-moss/15 p-3">
+          <h3 className="text-sm font-semibold text-ink">🎉 {t.allDoneTitle}</h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink">{t.allDoneBody(s.matches.length)}</p>
+        </div>
+      )}
+
       {s && has("Built recovery plan") && (
         <div>
           <h3 className="mb-1.5 text-sm font-semibold text-muted">{t.plan}</h3>
@@ -210,8 +226,26 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
                 <div className="min-w-0 text-sm font-semibold">{tr(task.title, lang)}</div>
                 {task.status === "blocked" && <span className="shrink-0 rounded-full bg-clay-soft px-2 py-0.5 text-[11px] text-clay">{t.blocked}</span>}
                 {task.status === "ready" && <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] text-tide">{t.ready}</span>}
+                {task.status === "done" && <span className="shrink-0 rounded-full bg-moss px-2 py-0.5 text-[11px] font-medium text-night">✓ {t.done}</span>}
               </div>
-              <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{s.conflicts.find((c) => task.id === `task:${c.id}`)?.question[lang] ?? tr(task.detail, lang)}</p>
+              {(() => {
+                const c = s.conflicts.find((x) => task.id === `task:${x.id}`);
+                if (c && task.status !== "done") {
+                  const choices = [...new Set(c.values.map((v) => v.value))];
+                  return (
+                    <>
+                      <p className="mt-0.5 text-xs text-muted">{c.question[lang]}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {choices.map((v) => (
+                          <button key={v} onClick={() => onResolve(c.id, v)} disabled={running}
+                            className="rounded-full border border-tide/60 px-3 py-1 text-xs font-semibold text-tide hover:bg-tide hover:text-night disabled:opacity-50">{t.thisOne(v)}</button>
+                        ))}
+                      </div>
+                    </>
+                  );
+                }
+                return <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{tr(task.detail, lang)}</p>;
+              })()}
               {task.status === "needs_approval" && (task.approved
                 ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-night">{t.approved}</span>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}

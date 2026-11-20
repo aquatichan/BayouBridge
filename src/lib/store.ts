@@ -22,8 +22,10 @@ export interface CaseProfile {
   name: string;
   address: string;
   language: "en" | "es";
-  /** A private copy of the synthetic sample household, not real data. */
+  /** A private copy of a synthetic sample household, not real data. */
   sample: boolean;
+  /** Which sample household (sample cases only). */
+  demo?: "reyes" | "johnson" | "nguyen";
   createdAt: number;
 }
 
@@ -38,6 +40,8 @@ interface CaseRecord {
   /** Raw bytes of uploaded files, by document id. Never sent to the browser. */
   files: Map<string, UploadedFile>;
   approvals: Record<string, { by: string; at: string }>;
+  /** The household's answers to "things that don't match", by conflict id. */
+  resolutions: Record<string, string>;
   outbox: OutboxItem[];
   /** Events logged after the run (approvals), so new events get fresh seq numbers. */
   extraEvents: ActivityEvent[];
@@ -47,7 +51,7 @@ interface CaseRecord {
 const g = globalThis as typeof globalThis & { __bayoubridgeStore?: Map<string, CaseRecord> };
 const cases = (g.__bayoubridgeStore ??= new Map<string, CaseRecord>());
 
-const blank = (now: number): Omit<CaseRecord, "documents"> => ({ files: new Map(), approvals: {}, outbox: [], extraEvents: [], touchedAt: now });
+const blank = (now: number): Omit<CaseRecord, "documents"> => ({ files: new Map(), approvals: {}, resolutions: {}, outbox: [], extraEvents: [], touchedAt: now });
 
 /** Drop session cases that haven't been used for CASE_TTL_MS. The shared demo case holds no personal data and stays. */
 function sweep(now: number) {
@@ -87,10 +91,16 @@ export function deleteCase(caseId: string): boolean {
 }
 
 /** Carry earlier approvals onto a (possibly new) plan. Task ids are stable across runs. */
-function withApprovals(state: CaseState, rec: Pick<CaseRecord, "approvals" | "outbox">): CaseState {
+function withApprovals(state: CaseState, rec: Pick<CaseRecord, "approvals" | "outbox" | "resolutions">): CaseState {
+  const answers = rec.resolutions ?? {};
   return {
     ...state,
-    plan: state.plan.map((t) => (rec.approvals[t.id] && t.status !== "blocked" ? { ...t, approved: true } : t)),
+    conflicts: state.conflicts.map((c) => (answers[c.id] ? { ...c, resolved: answers[c.id] } : c)),
+    plan: state.plan.map((t) => {
+      const answer = answers[t.id.replace(/^task:/, "")];
+      if (answer) return { ...t, status: "done" as const, detail: `Confirmed: ${answer}` };
+      return rec.approvals[t.id] && t.status !== "blocked" ? { ...t, approved: true } : t;
+    }),
     packets: state.packets.map((p) => (rec.outbox.some((o) => o.packet.id === p.id) ? { ...p, status: "queued" } : p)),
   };
 }
@@ -115,6 +125,33 @@ export function lastRun(caseId: string): CaseState | undefined {
 
 export function outbox(caseId: string): OutboxItem[] {
   return cases.get(caseId)?.outbox ?? [];
+}
+
+export type ResolveResult =
+  | { ok: true; state: CaseState; events: ActivityEvent[] }
+  | { ok: false; status: 400 | 404; error: string };
+
+/**
+ * The household answers one of "things that don't match" (which date, which spelling).
+ * The answer must be one of the values the documents state. It is kept with the case
+ * and applied to every later run, like an approval.
+ */
+export function resolveConflict(caseId: string, conflictId: string, value: string): ResolveResult {
+  const rec = cases.get(caseId);
+  if (!rec?.state) return { ok: false, status: 404, error: "Case not found. Run the agents first." };
+  const conflict = rec.state.conflicts.find((c) => c.id === conflictId);
+  if (!conflict) return { ok: false, status: 404, error: "Unknown task. The plan may have changed; run the agents again." };
+  if (!conflict.values.some((v) => v.value === value)) return { ok: false, status: 400, error: "Please choose one of the values your documents show." };
+  rec.resolutions[conflictId] = value;
+  rec.state = withApprovals(rec.state, rec);
+  rec.touchedAt = Date.now();
+  const seq = rec.state.events.length + rec.extraEvents.length;
+  const events: ActivityEvent[] = [{
+    seq: seq + 1, agent: "Evidence Agent", action: "Conflict resolved",
+    detail: `${conflict.field}: the household confirmed "${value}". Later drafts use it.`, minutesSaved: 3,
+  }];
+  rec.extraEvents.push(...events);
+  return { ok: true, state: rec.state, events };
 }
 
 export type ApproveResult =

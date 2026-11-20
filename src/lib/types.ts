@@ -15,6 +15,7 @@ export type DocKind =
   | "insurance_policy"
   | "medical_letter"
   | "receipt"
+  | "deed"
   | "other";
 
 /** Kinds that can prove someone lived at the address before the storm (with a period that ends before the date of loss). */
@@ -121,6 +122,8 @@ export interface Conflict {
   values: { value: string; docId: string; quote: string }[];
   impact: string;
   question: { en: string; es: string };
+  /** The value the household confirmed (POST /api/resolve). Set by the store, never by the agents. */
+  resolved?: string;
 }
 
 export interface ProgramMatch {
@@ -158,7 +161,8 @@ export interface PlanTask {
   due?: string;
   priority: number; // lower = sooner
   programId?: string;
-  status: "ready" | "blocked" | "needs_approval";
+  /** "done": the household answered it (a confirmed conflict). */
+  status: "ready" | "blocked" | "needs_approval" | "done";
   detail: string;
   /** Stamped by the Safety Agent on every outbound (BayouBridge-owned) task. */
   requiresApproval?: boolean;
@@ -230,6 +234,8 @@ export interface ExtractionSummary {
   /** Documents meant for Claude that the rules engine read instead (timeout, refusal, validation, error, breaker). */
   fellBack: number;
   mode: "claude" | "rules" | "mixed";
+  /** A sample case: its synthetic documents are always read by the rules engine, never by a model. */
+  sample?: boolean;
 }
 
 /** Live status of one coordinator task, for showing agents "working" while they run. */

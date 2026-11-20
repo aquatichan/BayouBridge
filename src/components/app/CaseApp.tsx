@@ -9,7 +9,8 @@ import { RunError, streamRun } from "@/lib/client/stream";
 import { OfficeDirector } from "@/lib/office/director";
 import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import CasePanel from "./CasePanel";
-import { checkFiles, Consent, Home, Upload, Welcome, type TypedDoc } from "./Onboarding";
+import { checkFiles, Consent, Home, SamplePicker, Upload, Welcome, type TypedDoc } from "./Onboarding";
+import type { DemoId } from "@/data/demoList";
 import { tr } from "@/lib/es";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import { STRINGS, type Lang } from "./i18n";
@@ -18,7 +19,9 @@ import { STRINGS, type Lang } from "./i18n";
 // The 3D office is always there: idle behind the first steps, then the
 // immersive dashboard where you watch the agents work your case.
 
-type Step = "welcome" | "consent" | "home" | "upload" | "office";
+type Step = "welcome" | "samples" | "consent" | "home" | "upload" | "office";
+/** A sample household's "a document arrives" moments: which document fills which gap. */
+type SampleFollowUp = { id: string; title: string; provides: string };
 const SESSION_KEY = "bayoubridge.case";
 const LANG_KEY = "bayoubridge.lang";
 const SIDE_MIN = 340, SIDE_MAX = 640, SIDE_RAIL = 56; // desktop sidebar: resizable between min/max, or collapsed to a rail
@@ -50,10 +53,10 @@ function useWide() {
   return wide;
 }
 
-/** Where the app opens: its own welcome, straight to consent ("Start a case"), or the sample case. */
+/** Where the app opens: its own welcome, straight to consent ("Start a case"), or the sample picker. */
 export type CaseAppStart = "welcome" | "consent" | "sample";
 
-export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart }) {
+export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppStart; demo?: DemoId }) {
   const wide = useWide();
   // The desktop sidebar: drag its left edge to resize, or fold it to a rail. Remembered per browser.
   const [sideW, setSideW] = useState(420);
@@ -85,6 +88,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const [caseId, setCaseId] = useState<string | null>(null);
   const [sample, setSample] = useState(false);
   const [household, setHousehold] = useState<{ name: string; address: string } | null>(null);
+  const [followUps, setFollowUps] = useState<SampleFollowUp[]>([]);
   const [state, setState] = useState<CaseState | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [tasks, setTasks] = useState<Record<string, TaskUpdate>>({});
@@ -111,8 +115,8 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     if (!id) return;
     fetch(`/api/cases/${id}`).then(async (r) => {
       if (!r.ok) { store.del(SESSION_KEY); return; }
-      const d = (await r.json()) as { profile: { name: string; address: string; sample: boolean }; state: CaseState | null };
-      setCaseId(id); setSample(d.profile.sample); setHousehold(d.profile);
+      const d = (await r.json()) as { profile: { name: string; address: string; sample: boolean }; state: CaseState | null; followUps: SampleFollowUp[] };
+      setCaseId(id); setSample(d.profile.sample); setHousehold(d.profile); setFollowUps(d.followUps ?? []);
       if (d.state) {
         setState(d.state); setMode(d.state.extraction); setEvents(d.state.events); setStep("office");
         fetch(`/api/outbox?caseId=${id}`).then((x) => x.json()).then((o: { items: OutboxItem[] }) => setOutbox(o.items)).catch(() => {});
@@ -127,7 +131,8 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     if (opened.current || start === "welcome") return;
     opened.current = true;
     if (start === "consent") setStep((s) => (s === "welcome" ? "consent" : s));
-    else void startSample();
+    else if (demo) void startSample(demo);
+    else setStep((s) => (s === "welcome" ? "samples" : s));
     // startSample is a plain function of this render; this runs once on arrival.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start]);
@@ -165,15 +170,28 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     }
   }, [director]);
 
-  async function startSample() {
+  async function startSample(which: DemoId) {
     setBusy(true); setError(null);
     try {
-      const { caseId: id } = await postJSON<{ caseId: string }>("/api/cases", { sample: true, language: lang });
-      store.set(SESSION_KEY, id);
-      setCaseId(id); setSample(true); setHousehold({ name: "Reyes household", address: "1847 Cypress Bayou Ln, Houston, TX 77093" }); setOutbox([]);
+      const d = await postJSON<{ caseId: string; profile: { name: string; address: string }; followUps: SampleFollowUp[]; documentCount: number }>(
+        "/api/cases", { sample: true, demo: which, language: lang });
+      store.set(SESSION_KEY, d.caseId);
+      setCaseId(d.caseId); setSample(true); setHousehold(d.profile); setFollowUps(d.followUps); setOutbox([]);
       setStep("office");
-      await run(id, { newDocs: 6 });
+      await run(d.caseId, { newDocs: d.documentCount });
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  /** The household confirms which of two values is right (a date, a spelling). */
+  async function resolve(conflictId: string, value: string) {
+    if (!caseId) return;
+    setApproveError(null);
+    try {
+      const d = await postJSON<{ conflicts: CaseState["conflicts"]; plan: PlanTask[]; events: ActivityEvent[] }>("/api/resolve", { caseId, conflictId, value });
+      d.events.forEach((e) => director.onEvent(e));
+      setState((prev) => prev && { ...prev, conflicts: d.conflicts, plan: d.plan });
+      setEvents((x) => [...x, ...d.events]);
+    } catch (e) { setApproveError((e as Error).message); }
   }
 
   async function createCase(v: { address: string; name: string }) {
@@ -247,14 +265,15 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     setMenu(false);
     if (caseId) await fetch(`/api/cases/${caseId}`, { method: "DELETE" }).catch(() => {});
     store.del(SESSION_KEY);
-    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null);
+    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null); setFollowUps([]);
     director.newRun(0);
     setStep("welcome");
     if (!sample) setNotice(t.deleted);
   }
 
   const minutes = events.reduce((n, e) => n + (e.minutesSaved ?? 0), 0);
-  const billPending = sample && !!state && state.followUp?.evidence === "proof_of_occupancy" && !state.documents.some((d) => d.kind === "utility_bill");
+  // In a sample case, the document that fills the gap the Follow-up Agent asked about can "arrive".
+  const nextSample = (sample && state?.followUp && followUps.find((f) => f.provides === state.followUp!.evidence && !state.documents.some((d) => d.id === f.id))) || null;
   const inOffice = step === "office";
   const sideOpen = !collapsed;
   const side = inOffice && wide ? (sideOpen ? sideW : SIDE_RAIL) : 0;
@@ -317,7 +336,8 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
         </div>
       )}
 
-      {step === "welcome" && <Welcome lang={lang} busy={busy} onStart={() => { setNotice(null); setStep("consent"); }} onSample={startSample} />}
+      {step === "welcome" && <Welcome lang={lang} busy={busy} onStart={() => { setNotice(null); setStep("consent"); }} onSample={() => setStep("samples")} />}
+      {step === "samples" && <SamplePicker lang={lang} busy={busy} onPick={startSample} onBack={() => setStep("welcome")} />}
       {step === "consent" && <Consent lang={lang} onAgree={() => setStep("home")} onBack={() => setStep("welcome")} />}
       {step === "home" && <Home lang={lang} busy={busy} error={error} onSubmit={createCase} onBack={() => setStep("consent")} />}
       {step === "upload" && <Upload lang={lang} claudeOn={claudeOn} busy={busy} error={error} onSubmit={upload} />}
@@ -343,9 +363,9 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
           ) : (
             <CasePanel
               s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample} mode={mode}
-              billPending={billPending} approving={approving} approveError={approveError}
+              nextSample={nextSample} approving={approving} approveError={approveError} onResolve={resolve}
               onApprove={approve} onUpload={(files) => followUp(files)} onType={(d) => followUp([], [d])} uploading={uploading}
-              onBill={() => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: ["doc-electric-bill"] })}
+              onArrive={(id) => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: [id] })}
               onCollapse={wide ? () => setCollapsed(true) : undefined}
             />
           )}

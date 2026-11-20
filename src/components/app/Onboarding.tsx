@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ACCEPT, MAX_FILES, problemWith } from "@/lib/client/files";
 import { TYPED_CHARS, TYPED_KINDS, type TypedKind } from "@/lib/typedKinds";
+import { DEMO_CARDS, type DemoId } from "@/data/demoList";
 import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
@@ -87,6 +88,41 @@ export function Home({ lang, onSubmit, onBack, busy, error }: {
           <button className={primary} disabled={busy || address.trim().length < 5}>{t.continue}</button>
         </div>
       </form>
+    </Card>
+  );
+}
+
+/** The three sample households, each a card with who they are and what happened. */
+export function SamplePicker({ lang, busy, onPick, onBack }: { lang: Lang; busy: boolean; onPick: (d: DemoId) => void; onBack: () => void }) {
+  const t = STRINGS[lang];
+  return (
+    <Card wide>
+      <h2 className="text-xl font-bold text-ink">{t.samplesTitle}</h2>
+      <p className="mt-1 text-sm text-muted">{t.samplesBody}</p>
+      <ul className="mt-4 space-y-2">
+        {DEMO_CARDS.map((d) => (
+          <li key={d.id}>
+            <button onClick={() => onPick(d.id)} disabled={busy}
+              className="group w-full rounded-2xl border border-line bg-bg/50 p-3 text-left transition hover:border-tide/60 disabled:opacity-50">
+              <div className="flex items-baseline justify-between gap-2">
+                <b className="text-sm text-ink">{d.name}</b>
+                <span className="shrink-0 text-xs font-semibold text-tide group-hover:underline">{t.openSample} →</span>
+              </div>
+              <p className="text-[11px] text-muted">{d.address}</p>
+              <ul className="mt-1.5 space-y-0.5 text-xs text-ink">
+                <li>👪 {d.people[lang]}</li>
+                <li>🏠 {d.home[lang]}</li>
+                <li>💵 {d.money[lang]}</li>
+                <li>🌀 {d.damage[lang]}</li>
+              </ul>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <button className={secondary} onClick={onBack}>{t.back}</button>
+        <span className="text-[11px] text-muted">{t.sampleNote}</span>
+      </div>
     </Card>
   );
 }

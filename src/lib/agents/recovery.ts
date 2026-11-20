@@ -129,11 +129,11 @@ export function resolvePeople(ex: ExtractionResult[]): { people: Person[]; alias
 // ── Needs ───────────────────────────────────────────────────────────────────
 
 const NEED_META: Record<NeedKey, { label: string; urgency: Need["urgency"] }> = {
-  medical_power: { label: "Oxygen concentrator needs reliable power", urgency: "critical" },
+  medical_power: { label: "Powered medical equipment needs reliable power", urgency: "critical" },
   roof_damage: { label: "Roof wind damage (tarped, not repaired)", urgency: "high" },
   fema_denial: { label: "FEMA said ineligible: occupancy not verified", urgency: "high" },
   interior_water_damage: { label: "Living room water damage", urgency: "medium" },
-  food_loss: { label: "Food lost in 4-day outage", urgency: "medium" },
+  food_loss: { label: "Food lost in power outage", urgency: "medium" },
 };
 
 const ROOMS = ["living room", "kitchen", "bedroom", "bathroom", "garage"];
@@ -267,7 +267,8 @@ export function matchPrograms(
 
   return programs.filter((p) => !(p.ownersOnly && tenure === "renter") && !(p.needsInsurance && uninsured)).map((p: ProgramRule) => {
     const firing = p.triggers.filter((t) => (t.need ? needKeys.has(t.need as NeedKey) : t.fact ? signals[t.fact] : false));
-    const evidence = p.requires.map((r) => {
+    const requires = tenure === "renter" && p.requiresForRenters ? p.requiresForRenters : p.requires;
+    const evidence = requires.map((r) => {
       const satisfiedBy = have(r.type);
       const hintFact = facts.find((f) => f.normalized === `has:${r.type}`);
       return { type: r.type, label: r.label, satisfiedBy, hint: satisfiedBy.length ? undefined : hintFact?.value };
@@ -298,7 +299,8 @@ export function matchPrograms(
       evidence,
       readiness,
       deadline,
-      nextAction: p.nextAction.replace("{member}", ctx ? member(ctx) : "the household member"),
+      nextAction: (ctx?.approver === "household" && p.nextActionHousehold ? p.nextActionHousehold : p.nextAction)
+        .replace("{member}", ctx ? member(ctx) : "the household member"),
       blocked: missing.length > 0,
       blockedBy: missing.map((m) => m.label),
       source: p.source,
@@ -312,6 +314,7 @@ export function matchPrograms(
 export function tenureOf(facts: Fact[], docs: CaseDocument[]): "renter" | "owner" | undefined {
   const said = new Set(facts.filter((f) => f.type === "tenure").map((f) => f.normalized));
   if (docs.some((d) => d.kind === "lease")) said.add("renter");
+  if (docs.some((d) => d.kind === "deed")) said.add("owner");
   return said.size === 1 ? (said.has("renter") ? "renter" : said.has("owner") ? "owner" : undefined) : undefined;
 }
 
@@ -441,10 +444,15 @@ export function buildPlan(
     const m = ctx.medical;
     // "Her"/"His" only when the documents state the relationship; otherwise the person's name.
     const whose = (m?.relation && PRONOUN[m.relation]) ?? (m?.first ? `${m.first}'s` : "Their");
-    add(critical.programId, {
+    // Until the doctor's form is on file this is the caseworker's to chase; once it is, the packet to the provider waits for approval.
+    add(critical.programId, critical.blocked ? {
       title: `Get ${member(ctx)}'s doctor to sign the critical care form`,
       owner: "Navigator", priority: 0, programId: critical.programId, status: "blocked",
       detail: `${whose} ${m?.equipment ?? "medical equipment"} needs power. Also make a backup plan for the next outage.`,
+    } : {
+      title: `Send ${member(ctx)}'s critical care form to the electric provider`,
+      owner: "BayouBridge", priority: 0, programId: critical.programId, status: "needs_approval",
+      detail: ctx.approver === "household" ? "Packet is ready. Nothing is sent until you approve it." : "Packet is ready. A navigator must approve before anything is sent.",
     });
   }
 
@@ -456,7 +464,8 @@ export function buildPlan(
     const days = m.deadline ? daysBetween(today, m.deadline.date) : 90;
     add(m.programId, {
       title: m.nextAction,
-      owner: m.programId === "sba-home-loan" ? "Navigator" : "BayouBridge",
+      // A loan is the family's decision: a caseworker talks it through, but in the app the household approves it themselves.
+      owner: m.programId === "sba-home-loan" && ctx.approver !== "household" ? "Navigator" : "BayouBridge",
       due: m.deadline?.date,
       priority: 2 + days / 100,
       programId: m.programId,

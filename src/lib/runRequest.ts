@@ -1,4 +1,4 @@
-import { followUpDocuments } from "@/data/household";
+import { ALL_FOLLOW_UPS } from "@/data/demos";
 import type { RunHooks } from "@/lib/agents/coordinator";
 import { runSessionCase } from "@/lib/cases";
 import { runDemoCase } from "@/lib/runDemo";
@@ -7,7 +7,7 @@ import type { CaseState } from "@/lib/types";
 
 // The body accepted by POST /api/run and /api/run/stream:
 //   {}                                   the shared synthetic demo case (scripts)
-//   { addDocumentIds: ["doc-..."] }      the demo case plus allow-listed follow-up documents
+//   { addDocumentIds: ["doc-..."] }      the demo case plus allow-listed follow-up documents (a sample case: its own household's)
 //   { caseId }                           a session case from the consumer flow
 //   { caseId, incremental: true }        the same, reusing documents read in its last run
 
@@ -25,7 +25,7 @@ export async function readRunRequest(req: Request): Promise<RunRequest | { error
   const ids = body.addDocumentIds;
   if (ids === undefined) return out;
   if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string")) return { error: "addDocumentIds must be an array of document ids", status: 400 };
-  const unknown = ids.filter((id) => !followUpDocuments.some((d) => d.id === id));
+  const unknown = ids.filter((id) => !ALL_FOLLOW_UPS.some((d) => d.id === id));
   if (unknown.length) return { error: `Unknown document id: ${unknown.join(", ")}`, status: 400 };
   out.addDocumentIds = ids;
   return out;
