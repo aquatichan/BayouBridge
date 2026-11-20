@@ -85,7 +85,7 @@ function Mascot({ def, director, followed, onPick, tops }: {
       <primitive object={scene} position={[0, FEET, 0]} scale={SCALE} />
       <mesh ref={halo} rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
         <ringGeometry args={[1.25, 1.5, 48]} />
-        <meshBasicMaterial color={def.color} transparent opacity={followed ? 0.9 : 0.45} />
+        <meshBasicMaterial color={def.color} transparent opacity={followed ? 0.95 : 0.55} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </mesh>
     </group>
   );
@@ -113,7 +113,7 @@ function Destination({ def, director }: { def: MascotDef; director: OfficeDirect
     <>
       <mesh ref={ribbon}>
         <boxGeometry args={[0.16, 0.01, 1]} />
-        <meshBasicMaterial color={def.color} transparent opacity={0.5} />
+        <meshBasicMaterial color={def.color} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </mesh>
       <mesh ref={marker} rotation-x={-Math.PI / 2}>
         <ringGeometry args={[0.75, 1.0, 40]} />
@@ -123,51 +123,171 @@ function Destination({ def, director }: { def: MascotDef; director: OfficeDirect
   );
 }
 
-// ── Props ────────────────────────────────────────────────────────────────────
+// ── Command room kit ─────────────────────────────────────────────────────────
+// The room is a round command deck: glowing floor rings around a hologram globe,
+// a ring of live wall screens, light-strip pillars, server racks and consoles.
+// Glowing parts use unlit, additive materials so they read as light, not paint.
 
-const WOOD = "#c9a27a", PAPER = "#fffdf8", METAL = "#9aa5a3";
+const CYAN = "#7dd3fc", BLUE = "#2f8fd8", ORANGE = "#ff8a3d", HULL = "#121e30", HULL_DARK = "#0a1322", TRIM = "#24364f";
+const WALL_R = 20, CEIL = 12.5;
 
-function Desk({ color, screen }: { color: string; screen?: string }) {
+function Glow({ color = CYAN, opacity = 1, side }: { color?: string; opacity?: number; side?: THREE.Side }) {
+  return <meshBasicMaterial color={color} transparent opacity={opacity} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} side={side} />;
+}
+function Hull({ color = HULL, metal = 0.55 }: { color?: string; metal?: number }) {
+  return <meshStandardMaterial color={color} metalness={metal} roughness={0.42} />;
+}
+
+/** Wall-screen graphics, drawn on canvases and redrawn a few times a second so the screens feel live. */
+type Huds = THREE.CanvasTexture[];
+function drawHud(c: HTMLCanvasElement, kind: number, t: number) {
+  const g = c.getContext("2d");
+  if (!g) return;
+  const W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "rgba(60,150,230,0.30)"); bg.addColorStop(1, "rgba(20,60,120,0.12)");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(170,230,255,0.95)"; g.lineWidth = 4;
+  const b = 28;
+  for (const [x, y, sx, sy] of [[6, 6, 1, 1], [W - 6, 6, -1, 1], [6, H - 6, 1, -1], [W - 6, H - 6, -1, -1]]) {
+    g.beginPath(); g.moveTo(x + sx * b, y); g.lineTo(x, y); g.lineTo(x, y + sy * b); g.stroke();
+  }
+  g.strokeStyle = "rgba(170,230,255,0.22)"; g.lineWidth = 1.5; g.strokeRect(16, 16, W - 32, H - 32);
+  g.fillStyle = "rgba(190,235,255,0.9)";
+  for (let i = 0; i < 5; i++) g.fillRect(30 + i * 24, 30, 16, 6);
+  g.fillRect(W - 170, 30, 140 * (0.55 + 0.45 * Math.sin(t * 0.7 + kind)), 6);
+  g.fillStyle = "rgba(190,235,255,0.35)";
+  for (let i = 0; i < 3; i++) g.fillRect(30, H - 44 + i * 10, (W - 60) * (0.3 + 0.5 * Math.abs(Math.sin(i * 1.7 + kind + t * 0.15))), 4);
+  g.strokeStyle = "rgba(170,230,255,0.9)"; g.fillStyle = "rgba(170,230,255,0.85)";
+  const top = 52, bottom = H - 56, mid = (top + bottom) / 2;
+  if (kind === 0) { // three dial gauges
+    for (let i = 0; i < 3; i++) {
+      const cx = W * (0.2 + 0.3 * i), r = Math.min(62, (bottom - top) / 2 - 6), v = 0.5 + 0.42 * Math.sin(t * 0.9 + i * 2.1);
+      g.lineWidth = 10; g.strokeStyle = "rgba(170,230,255,0.15)";
+      g.beginPath(); g.arc(cx, mid, r, Math.PI * 0.75, Math.PI * 2.25); g.stroke();
+      g.strokeStyle = i === 1 ? "rgba(255,170,100,0.95)" : "rgba(170,230,255,0.95)";
+      g.beginPath(); g.arc(cx, mid, r, Math.PI * 0.75, Math.PI * (0.75 + 1.5 * v)); g.stroke();
+      g.lineWidth = 2; g.strokeStyle = "rgba(170,230,255,0.5)";
+      g.beginPath(); g.arc(cx, mid, r * 0.62, 0, Math.PI * 2); g.stroke();
+      g.fillRect(cx - 18, mid - 5, 36 * v, 10);
+    }
+  } else if (kind === 1) { // bar chart
+    const n = 20, w = (W - 70) / n;
+    for (let i = 0; i < n; i++) {
+      const v = 0.25 + 0.7 * Math.abs(Math.sin(t * 0.6 + i * 0.55) * Math.cos(i * 0.31 + t * 0.21));
+      g.fillStyle = i % 7 === 3 ? "rgba(255,170,100,0.9)" : "rgba(170,230,255,0.8)";
+      g.fillRect(35 + i * w, bottom - (bottom - top) * v, w * 0.62, (bottom - top) * v);
+    }
+  } else if (kind === 2) { // scrolling line charts
+    g.lineWidth = 1; g.strokeStyle = "rgba(170,230,255,0.15)";
+    for (let y = top; y <= bottom; y += 24) { g.beginPath(); g.moveTo(30, y); g.lineTo(W - 30, y); g.stroke(); }
+    for (const [k, col] of [[0, "rgba(170,230,255,0.95)"], [1, "rgba(255,170,100,0.9)"]] as const) {
+      g.lineWidth = 3; g.strokeStyle = col; g.beginPath();
+      for (let x = 30; x <= W - 30; x += 8) {
+        const u = x * 0.02 + t * (0.8 + k * 0.3);
+        const y = mid + (Math.sin(u) * 0.5 + Math.sin(u * 2.3 + k) * 0.3) * (bottom - top) * 0.42;
+        if (x === 30) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+  } else { // radar sweep
+    const cx = W * 0.32, r = (bottom - top) / 2;
+    g.lineWidth = 1.5; g.strokeStyle = "rgba(170,230,255,0.35)";
+    for (let k = 1; k <= 3; k++) { g.beginPath(); g.arc(cx, mid, (r * k) / 3, 0, Math.PI * 2); g.stroke(); }
+    g.beginPath(); g.moveTo(cx - r, mid); g.lineTo(cx + r, mid); g.moveTo(cx, mid - r); g.lineTo(cx, mid + r); g.stroke();
+    const a = t * 1.6;
+    const sweep = g.createRadialGradient(cx, mid, 0, cx, mid, r);
+    sweep.addColorStop(0, "rgba(170,230,255,0.5)"); sweep.addColorStop(1, "rgba(170,230,255,0.05)");
+    g.fillStyle = sweep; g.beginPath(); g.moveTo(cx, mid); g.arc(cx, mid, r, a - 0.6, a); g.closePath(); g.fill();
+    for (let i = 0; i < 9; i++) {
+      const ba = i * 2.4, br = r * (0.25 + ((i * 37) % 70) / 100);
+      const d = ((a - ba) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      g.fillStyle = `rgba(${i % 3 ? "170,230,255" : "255,170,100"},${Math.max(0.15, 1 - d / 3)})`;
+      g.beginPath(); g.arc(cx + Math.cos(ba) * br, mid + Math.sin(ba) * br, 5, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = "rgba(170,230,255,0.7)";
+    for (let i = 0; i < 6; i++) g.fillRect(W * 0.6, top + 8 + i * 26, (W * 0.33) * (0.35 + 0.6 * Math.abs(Math.sin(t * 0.5 + i))), 8);
+  }
+}
+
+function useHuds(): Huds {
+  const huds = useMemo(() => [0, 1, 2, 3].map(() => {
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 320;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }), []);
+  const last = useRef(-1);
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    if (t - last.current < 0.15) return;
+    last.current = t;
+    huds.forEach((tex, i) => { drawHud(tex.image as HTMLCanvasElement, i, t + i * 3); tex.needsUpdate = true; });
+  });
+  useEffect(() => () => huds.forEach((t) => t.dispose()), [huds]);
+  return huds;
+}
+
+/** A floating holo screen showing one of the live HUD graphics. */
+function Screen({ huds, kind, w, h, color = CYAN, opacity = 0.95 }: { huds: Huds; kind: number; w: number; h: number; color?: string; opacity?: number }) {
+  return (
+    <mesh>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial map={huds[kind % huds.length]} color={color} transparent opacity={opacity} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+    </mesh>
+  );
+}
+
+/** A console: dark hull, a glowing edge in the owner's color, and (optionally) a live holo screen. */
+function Console({ color, huds, screen }: { color: string; huds: Huds; screen?: number }) {
   return (
     <group>
-      <mesh position={[0, 0.85, 0]} castShadow receiveShadow><boxGeometry args={[2.6, 0.1, 1.1]} /><meshStandardMaterial color={WOOD} /></mesh>
-      <mesh position={[0, 0.42, -0.35]} castShadow><boxGeometry args={[2.4, 0.84, 0.08]} /><meshStandardMaterial color={color} /></mesh>
-      {screen && (
-        <group position={[0, 1.3, -0.25]}>
-          <mesh castShadow><boxGeometry args={[1.1, 0.7, 0.06]} /><meshStandardMaterial color="#1d2b2a" /></mesh>
-          <mesh position={[0, 0, 0.035]}><planeGeometry args={[1.0, 0.6]} /><meshStandardMaterial color={screen} emissive={screen} emissiveIntensity={0.6} /></mesh>
+      <mesh position={[0, 0.42, -0.1]} castShadow receiveShadow><boxGeometry args={[2.5, 0.84, 0.9]} /><Hull /></mesh>
+      <mesh position={[0, 0.9, 0.05]} rotation-x={-0.25} castShadow><boxGeometry args={[2.7, 0.1, 1.15]} /><Hull color={TRIM} /></mesh>
+      <mesh position={[0, 0.9, 0.64]} rotation-x={-0.25}><boxGeometry args={[2.7, 0.04, 0.04]} /><Glow color={color} /></mesh>
+      <mesh position={[0, 0.06, 0.36]}><boxGeometry args={[2.4, 0.04, 0.02]} /><Glow color={color} opacity={0.7} /></mesh>
+      {screen !== undefined && (
+        <group position={[0, 1.75, -0.35]}>
+          <Screen huds={huds} kind={screen} w={1.9} h={1.15} color={color} />
+          <mesh position={[0, -0.72, 0]}><boxGeometry args={[0.06, 0.3, 0.06]} /><Hull color={TRIM} /></mesh>
         </group>
       )}
     </group>
   );
 }
 
-function Prop({ id, color, snap }: { id: StationId; color: string; snap: OfficeSnapshot }) {
+function Prop({ id, color, snap, huds }: { id: StationId; color: string; snap: OfficeSnapshot; huds: Huds }) {
   const boom = useRef<THREE.Group>(null);
-  useFrame((_, dt) => {
+  const spin = useRef<THREE.Group>(null);
+  useFrame((state, dt) => {
     if (boom.current) boom.current.rotation.z = THREE.MathUtils.damp(boom.current.rotation.z, snap.gateOpen ? 1.25 : 0, 4, dt);
+    if (spin.current) { spin.current.rotation.y += dt * 0.8; spin.current.position.y = 1.55 + Math.sin(state.clock.elapsedTime * 1.4) * 0.06; }
   });
   switch (id) {
-    case "desk": return <Desk color={color} screen="#7fc1b4" />;
+    case "desk": return <Console color={color} huds={huds} screen={2} />;
     case "reading": return (
       <group>
-        <Desk color={color} />
-        {[0, 1, 2].map((i) => <mesh key={i} position={[-0.6 + i * 0.5, 0.92 + i * 0.01, 0.1]} rotation-y={i * 0.2}><boxGeometry args={[0.42, 0.02, 0.56]} /><meshStandardMaterial color={PAPER} /></mesh>)}
-        <mesh position={[0.9, 1.25, -0.2]}><coneGeometry args={[0.22, 0.3, 20]} /><meshStandardMaterial color="#f2a541" emissive="#f2a541" emissiveIntensity={0.4} /></mesh>
+        <Console color={color} huds={huds} />
+        <group ref={spin}>
+          {[0, 1, 2].map((i) => <mesh key={i} position={[-0.5 + i * 0.5, i * 0.12, 0]} rotation-y={(i - 1) * 0.35}><planeGeometry args={[0.42, 0.56]} /><Glow color="#cdeaff" opacity={0.55} side={THREE.DoubleSide} /></mesh>)}
+        </group>
       </group>
     );
     case "lab": return (
       <group>
-        <Desk color={color} screen="#b9a3e3" />
-        <mesh position={[0.95, 1.2, 0.1]}><sphereGeometry args={[0.22, 24, 24]} /><meshStandardMaterial color="#c9b6f0" emissive="#8a6bd1" emissiveIntensity={0.8} /></mesh>
+        <Console color={color} huds={huds} screen={3} />
+        <mesh position={[1.0, 1.25, 0.15]}><sphereGeometry args={[0.24, 24, 24]} /><Glow color="#b48cff" /></mesh>
+        <mesh position={[1.0, 1.25, 0.15]}><sphereGeometry args={[0.36, 16, 12]} /><meshBasicMaterial color="#b48cff" wireframe transparent opacity={0.35} toneMapped={false} /></mesh>
       </group>
     );
     case "inbox": return (
       <group>
-        <Desk color={color} />
-        <mesh position={[0, 0.95, 0]}><boxGeometry args={[1.0, 0.08, 0.75]} /><meshStandardMaterial color={METAL} /></mesh>
+        <Console color={color} huds={huds} />
+        <mesh position={[0, 1.0, 0]}><boxGeometry args={[1.0, 0.06, 0.7]} /><Hull color={TRIM} /></mesh>
         {Array.from({ length: Math.min(snap.inbox, 12) }, (_, i) => (
-          <mesh key={i} position={[0, 1.0 + i * 0.045, 0]} rotation-y={(i % 3) * 0.08}><boxGeometry args={[0.8, 0.035, 0.6]} /><meshStandardMaterial color={i % 2 ? PAPER : "#f4ecdc"} /></mesh>
+          <mesh key={i} position={[0, 1.06 + i * 0.05, 0]} rotation-y={(i % 3) * 0.08}><boxGeometry args={[0.8, 0.025, 0.58]} /><Glow color={i % 2 ? "#cdeaff" : CYAN} opacity={0.6} /></mesh>
         ))}
       </group>
     );
@@ -175,64 +295,76 @@ function Prop({ id, color, snap }: { id: StationId; color: string; snap: OfficeS
       <group>
         {[-0.7, 0.7].map((x) => (
           <group key={x} position={[x, 0, 0]}>
-            <mesh position={[0, 0.8, 0]} castShadow><boxGeometry args={[1.1, 1.6, 0.9]} /><meshStandardMaterial color={METAL} /></mesh>
-            {[0.35, 0.8, 1.25].map((y) => <mesh key={y} position={[0, y, 0.46]}><boxGeometry args={[0.9, 0.34, 0.02]} /><meshStandardMaterial color="#b9c3c1" /></mesh>)}
+            <mesh position={[0, 1.0, 0]} castShadow><boxGeometry args={[1.1, 2.0, 0.9]} /><Hull color={HULL_DARK} /></mesh>
+            {[0.4, 0.85, 1.3, 1.75].map((y) => <mesh key={y} position={[0, y, 0.46]}><boxGeometry args={[0.85, 0.03, 0.02]} /><Glow color={color} opacity={0.8} /></mesh>)}
           </group>
         ))}
       </group>
     );
     case "board": return (
       <group>
-        <mesh position={[0, 1.45, 0]} castShadow><boxGeometry args={[3.0, 1.7, 0.08]} /><meshStandardMaterial color="#fbf6ea" /></mesh>
-        {[[-1, 1.8, "#f2a541"], [-0.3, 1.2, "#dcebe7"], [0.5, 1.75, "#f7e1da"], [1.0, 1.15, "#f2a541"], [-0.9, 1.0, "#f7e1da"]].map(([x, y, c], i) => (
-          <mesh key={i} position={[x as number, y as number, 0.05]}><planeGeometry args={[0.45, 0.38]} /><meshStandardMaterial color={c as string} /></mesh>
+        <mesh position={[0, 1.6, -0.05]}><boxGeometry args={[3.1, 1.8, 0.05]} /><Hull color={HULL_DARK} /></mesh>
+        <group position={[0, 1.6, 0.02]}><Screen huds={huds} kind={1} w={3.0} h={1.7} color={color} opacity={0.6} /></group>
+        {[[-1, 1.95, ORANGE], [-0.3, 1.3, CYAN], [0.5, 1.9, "#ff9db0"], [1.0, 1.25, ORANGE], [-0.9, 1.1, "#ff9db0"]].map(([x, y, c], i) => (
+          <mesh key={i} position={[x as number, y as number, 0.06]}><planeGeometry args={[0.45, 0.36]} /><Glow color={c as string} opacity={0.7} /></mesh>
         ))}
-        {[-1.3, 1.3].map((x) => <mesh key={x} position={[x, 0.3, 0]}><boxGeometry args={[0.08, 0.6, 0.08]} /><meshStandardMaterial color={WOOD} /></mesh>)}
+        {[-1.3, 1.3].map((x) => <mesh key={x} position={[x, 0.35, 0]}><boxGeometry args={[0.1, 0.7, 0.1]} /><Hull color={TRIM} /></mesh>)}
       </group>
     );
-    case "graph": return (
-      <group>
-        <mesh position={[0, 1.5, 0]} castShadow><boxGeometry args={[3.0, 1.8, 0.1]} /><meshStandardMaterial color="#1d2b2a" /></mesh>
-        {[[-1, 1.9], [-1, 1.2], [0, 1.6], [1, 2.0], [1, 1.1]].map(([x, y], i) => (
-          <mesh key={i} position={[x, y, 0.07]}><circleGeometry args={[0.13, 20]} /><meshStandardMaterial color="#7fc1b4" emissive="#7fc1b4" emissiveIntensity={0.9} /></mesh>
-        ))}
-        <mesh position={[0, 0.3, 0]}><boxGeometry args={[0.15, 0.6, 0.15]} /><meshStandardMaterial color={METAL} /></mesh>
-      </group>
-    );
+    case "graph": {
+      const nodes: [number, number][] = [[-1, 1.95], [-1, 1.25], [0, 1.65], [1, 2.05], [1, 1.15]];
+      return (
+        <group>
+          <mesh position={[0, 1.6, -0.06]} castShadow><boxGeometry args={[3.0, 1.8, 0.08]} /><Hull color={HULL_DARK} /></mesh>
+          {[[0, 2], [1, 2], [2, 3], [2, 4]].map(([a, b2], i) => {
+            const [x1, y1] = nodes[a], [x2, y2] = nodes[b2];
+            return <mesh key={i} position={[(x1 + x2) / 2, (y1 + y2) / 2, 0.01]} rotation-z={Math.atan2(y2 - y1, x2 - x1)}><planeGeometry args={[Math.hypot(x2 - x1, y2 - y1), 0.03]} /><Glow color={color} opacity={0.6} /></mesh>;
+          })}
+          {nodes.map(([x, y], i) => <mesh key={i} position={[x, y, 0.02]}><circleGeometry args={[0.13, 20]} /><Glow color={i === 2 ? ORANGE : color} /></mesh>)}
+          <mesh position={[0, 0.35, 0]}><boxGeometry args={[0.15, 0.7, 0.15]} /><Hull color={TRIM} /></mesh>
+        </group>
+      );
+    }
     case "library": return (
       <group>
-        <mesh position={[0, 1.1, 0]} castShadow><boxGeometry args={[2.6, 2.2, 0.7]} /><meshStandardMaterial color={WOOD} /></mesh>
+        <mesh position={[0, 1.2, 0]} castShadow><boxGeometry args={[2.6, 2.4, 0.7]} /><Hull color={HULL_DARK} /></mesh>
         {[0.45, 1.05, 1.65].map((y) => Array.from({ length: 9 }, (_, i) => (
-          <mesh key={`${y}-${i}`} position={[-1.05 + i * 0.26, y + 0.2, 0.3]}><boxGeometry args={[0.2, 0.42, 0.18]} /><meshStandardMaterial color={["#2f5d8a", "#0f4c4a", "#b9791a", "#b8462f", "#4f7d4d"][(i + y * 10) % 5 | 0]} /></mesh>
+          <mesh key={`${y}-${i}`} position={[-1.05 + i * 0.26, y + 0.2, 0.36]}><boxGeometry args={[0.16, 0.4, 0.02]} /><Glow color={[CYAN, color, ORANGE, "#9be7c4", BLUE][(i + y * 10) % 5 | 0]} opacity={0.75} /></mesh>
         )))}
       </group>
     );
     case "phone": return (
       <group>
-        <Desk color={color} />
-        <mesh position={[0.3, 0.97, 0.05]}><boxGeometry args={[0.5, 0.14, 0.35]} /><meshStandardMaterial color="#b9791a" /></mesh>
-        <mesh position={[0.3, 1.08, 0.05]} rotation-z={Math.PI / 2}><capsuleGeometry args={[0.06, 0.35, 6, 12]} /><meshStandardMaterial color="#1d2b2a" /></mesh>
+        <Console color={color} huds={huds} screen={0} />
+        <mesh position={[0.6, 1.15, 0.2]}><torusGeometry args={[0.22, 0.03, 8, 32]} /><Glow color={ORANGE} /></mesh>
+        <mesh position={[0.6, 1.15, 0.2]}><torusGeometry args={[0.34, 0.015, 8, 32]} /><Glow color={ORANGE} opacity={0.5} /></mesh>
       </group>
     );
     case "packets": return (
       <group>
-        <Desk color={color} />
-        {[-0.7, -0.1, 0.5].map((x, i) => <mesh key={x} position={[x, 0.93 + i * 0.01, 0.05]} rotation-y={(i - 1) * 0.15}><boxGeometry args={[0.55, 0.03, 0.38]} /><meshStandardMaterial color="#f8ead0" /></mesh>)}
+        <Console color={color} huds={huds} />
+        {[-0.7, -0.1, 0.5].map((x, i) => <mesh key={x} position={[x, 1.02 + i * 0.01, 0.05]} rotation-y={(i - 1) * 0.15}><boxGeometry args={[0.55, 0.02, 0.38]} /><Glow color="#ffd8a8" opacity={0.65} /></mesh>)}
       </group>
     );
     case "gate": return (
       <group>
-        {[-1.3, 1.3].map((x) => <mesh key={x} position={[x, 0.7, 0]} castShadow><boxGeometry args={[0.25, 1.4, 0.25]} /><meshStandardMaterial color={color} /></mesh>)}
-        <group ref={boom} position={[-1.3, 1.2, 0]}>
-          <mesh position={[1.3, 0, 0]}><boxGeometry args={[2.6, 0.12, 0.12]} /><meshStandardMaterial color="#f2a541" /></mesh>
+        {[-1.3, 1.3].map((x) => (
+          <group key={x} position={[x, 0, 0]}>
+            <mesh position={[0, 0.8, 0]} castShadow><boxGeometry args={[0.3, 1.6, 0.3]} /><Hull color={TRIM} /></mesh>
+            <mesh position={[0, 0.8, 0.16]}><boxGeometry args={[0.06, 1.3, 0.02]} /><Glow color={snap.gateOpen ? "#5fc48c" : color} /></mesh>
+          </group>
+        ))}
+        <group ref={boom} position={[-1.3, 1.3, 0]}>
+          <mesh position={[1.3, 0, 0]}><boxGeometry args={[2.6, 0.1, 0.1]} /><Glow color={ORANGE} /></mesh>
         </group>
       </group>
     );
     case "outbox": return (
       <group>
-        <mesh position={[0, 0.55, 0]} castShadow><boxGeometry args={[0.3, 1.1, 0.3]} /><meshStandardMaterial color={METAL} /></mesh>
-        <mesh position={[0, 1.35, 0]} castShadow><boxGeometry args={[1.0, 0.6, 0.7]} /><meshStandardMaterial color="#2f5d8a" /></mesh>
-        <mesh position={[0, 1.45, 0.36]}><boxGeometry args={[0.6, 0.06, 0.02]} /><meshStandardMaterial color="#1d2b2a" /></mesh>
+        <mesh position={[0, 0.55, 0]} castShadow><cylinderGeometry args={[0.2, 0.3, 1.1, 16]} /><Hull color={TRIM} /></mesh>
+        <mesh position={[0, 1.4, 0]} castShadow><boxGeometry args={[1.0, 0.65, 0.7]} /><Hull /></mesh>
+        <mesh position={[0, 1.5, 0.36]}><boxGeometry args={[0.6, 0.06, 0.02]} /><Glow color={color} /></mesh>
+        <mesh position={[0, 1.25, 0.36]}><boxGeometry args={[0.8, 0.02, 0.02]} /><Glow color={CYAN} opacity={0.6} /></mesh>
       </group>
     );
   }
@@ -246,7 +378,7 @@ export function propPosition(id: StationId) {
   return { x: s.spot.x * k, z: s.spot.z * k };
 }
 
-function Stations({ snap }: { snap: OfficeSnapshot }) {
+function Stations({ snap, huds }: { snap: OfficeSnapshot; huds: Huds }) {
   return (
     <>
       {(Object.keys(STATIONS) as StationId[]).map((id) => {
@@ -254,10 +386,57 @@ function Stations({ snap }: { snap: OfficeSnapshot }) {
         const owner = MASCOTS.find((m) => m.home === id);
         return (
           <group key={id} position={[p.x, 0, p.z]} rotation-y={STATIONS[id].facing + Math.PI}>
-            <Prop id={id} color={owner?.color ?? "#c9c1ad"} snap={snap} />
+            <Prop id={id} color={owner?.color ?? CYAN} snap={snap} huds={huds} />
+            {/* a glowing pad in front of each station */}
+            <mesh rotation-x={-Math.PI / 2} position={[0, 0.012, 1.2]}><ringGeometry args={[0.9, 1.0, 40, 1, 0, Math.PI]} /><Glow color={owner?.color ?? CYAN} opacity={0.35} /></mesh>
           </group>
         );
       })}
+    </>
+  );
+}
+
+/** Light pulses running along the floor from the globe out to each station; faster where someone is at work. */
+function DataStreams({ snap }: { snap: OfficeSnapshot }) {
+  const ids = Object.keys(STATIONS) as StationId[];
+  const PER = 3;
+  const packets = useRef<THREE.InstancedMesh>(null!);
+  const phase = useRef(ids.map((_, i) => i * 0.37));
+  const tmp = useMemo(() => new THREE.Object3D(), []);
+  const busy = new Set(snap.mascots.filter((m) => m.phase !== "idle" && m.destination).map((m) => m.destination!));
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  useFrame((_, dt) => {
+    ids.forEach((id, i) => {
+      const on = busyRef.current.has(id);
+      phase.current[i] = (phase.current[i] + dt * (on ? 0.9 : 0.22)) % 1;
+      const s = STATIONS[id].spot, r = Math.hypot(s.x, s.z);
+      for (let k = 0; k < PER; k++) {
+        const u = (phase.current[i] + k / PER) % 1;
+        const d = 1.9 + u * (r - 2.6);
+        tmp.position.set((s.x / r) * d, 0.05, (s.z / r) * d);
+        tmp.scale.setScalar((on ? 1.4 : 0.8) * Math.sin(u * Math.PI));
+        tmp.updateMatrix();
+        packets.current.setMatrixAt(i * PER + k, tmp.matrix);
+      }
+    });
+    packets.current.instanceMatrix.needsUpdate = true;
+  });
+  return (
+    <>
+      {ids.map((id) => {
+        const s = STATIONS[id].spot, r = Math.hypot(s.x, s.z), mid = (1.9 + r - 0.7) / 2;
+        return (
+          <mesh key={id} position={[(s.x / r) * mid, 0.008, (s.z / r) * mid]} rotation-y={Math.atan2(s.x, s.z)} rotation-x={-Math.PI / 2}>
+            <planeGeometry args={[0.05, r - 2.6]} />
+            <Glow color={CYAN} opacity={busy.has(id) ? 0.55 : 0.16} />
+          </mesh>
+        );
+      })}
+      <instancedMesh ref={packets} args={[undefined, undefined, ids.length * PER]} frustumCulled={false}>
+        <sphereGeometry args={[0.09, 10, 8]} />
+        <Glow color="#bfeaff" />
+      </instancedMesh>
     </>
   );
 }
@@ -285,7 +464,7 @@ function LabelProjector({ director, labels, tops }: {
         v.current.set(p.x, 2.75, p.z);
       }
       v.current.project(camera);
-      const visible = v.current.z < 1 && Math.abs(v.current.x) < 1.3 && Math.abs(v.current.y) < 1.3;
+      const visible = v.current.z < 1 && Math.abs(v.current.x) < 0.9 && Math.abs(v.current.y) < 0.92;
       el.style.opacity = visible ? "1" : "0";
       if (!visible) continue;
       const x = ((v.current.x + 1) / 2) * size.width;
@@ -297,14 +476,274 @@ function LabelProjector({ director, labels, tops }: {
   return null;
 }
 
-function Room() {
-  const wall = useMemo(() => new THREE.CylinderGeometry(13, 13, 2.4, 64, 1, true, Math.PI * 0.62, Math.PI * 0.76), []);
+const polar = (a: number, r: number): [number, number] => [Math.sin(a) * r, Math.cos(a) * r];
+
+/** The central pedestal: concentric floor rings rippling out from a slowly turning hologram globe. */
+function Core() {
+  const globe = useRef<THREE.Group>(null!);
+  const orbitA = useRef<THREE.Mesh>(null!);
+  const orbitB = useRef<THREE.Mesh>(null!);
+  const ripples = useRef<THREE.Mesh[]>([]);
+  const dots = useMemo(() => {
+    // dots on a sphere (a "hologram planet"), thinned out into patchy land masses
+    const pts: number[] = [];
+    const n = 900;
+    for (let i = 0; i < n; i++) {
+      const y = 1 - (i / (n - 1)) * 2, rr = Math.sqrt(1 - y * y), th = i * 2.39996;
+      const x = Math.cos(th) * rr, z = Math.sin(th) * rr;
+      if (Math.sin(x * 3.1) + Math.cos(z * 2.7 + y * 1.9) + Math.sin(y * 4.2) > 0.35) pts.push(x * 1.02, y * 1.02, z * 1.02);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    return g;
+  }, []);
+  useEffect(() => () => dots.dispose(), [dots]);
+  useFrame((state, dt) => {
+    const t = state.clock.elapsedTime;
+    globe.current.rotation.y += dt * 0.25;
+    globe.current.position.y = 4.7 + Math.sin(t * 0.8) * 0.08;
+    orbitA.current.rotation.z += dt * 0.5;
+    orbitB.current.rotation.z -= dt * 0.35;
+    ripples.current.forEach((m, i) => {
+      if (!m) return;
+      const u = (t * 0.28 + i / 3) % 1;
+      m.scale.setScalar(1 + u * 3.2);
+      (m.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - u);
+    });
+  });
+  return (
+    <group>
+      {/* steady rings */}
+      {[[1.3, 1.42, 0.9], [2.1, 2.16, 0.55], [3.0, 3.05, 0.45], [4.1, 4.14, 0.3], [5.4, 5.44, 0.22]].map(([a, b, o]) => (
+        <mesh key={a} rotation-x={-Math.PI / 2} position={[0, 0.01, 0]}><ringGeometry args={[a, b, 96]} /><Glow opacity={o} /></mesh>
+      ))}
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.009, 0]}><circleGeometry args={[1.3, 64]} /><Glow color={BLUE} opacity={0.25} /></mesh>
+      {/* rings rippling outward */}
+      {[0, 1, 2].map((i) => (
+        <mesh key={i} ref={(m) => { if (m) ripples.current[i] = m; }} rotation-x={-Math.PI / 2} position={[0, 0.011, 0]}>
+          <ringGeometry args={[1.5, 1.56, 96]} /><Glow opacity={0.4} />
+        </mesh>
+      ))}
+      {/* the pedestal (low, so the helpers can walk across it) and the light beam */}
+      <mesh position={[0, 0.1, 0]} receiveShadow><cylinderGeometry args={[0.95, 1.05, 0.2, 48]} /><Hull color={TRIM} metal={0.7} /></mesh>
+      <mesh position={[0, 0.21, 0]} rotation-x={-Math.PI / 2}><ringGeometry args={[0.7, 0.92, 48]} /><Glow /></mesh>
+      <mesh position={[0, 2.0, 0]}><cylinderGeometry args={[1.0, 0.75, 3.6, 48, 1, true]} /><Glow color={BLUE} opacity={0.12} side={THREE.DoubleSide} /></mesh>
+      {/* the globe */}
+      <group ref={globe} position={[0, 4.7, 0]} scale={1.05}>
+        <mesh><sphereGeometry args={[0.98, 32, 24]} /><Glow color={BLUE} opacity={0.22} /></mesh>
+        <mesh><sphereGeometry args={[1.0, 24, 16]} /><meshBasicMaterial color={CYAN} wireframe transparent opacity={0.18} toneMapped={false} depthWrite={false} /></mesh>
+        <points geometry={dots}><pointsMaterial color="#bfeaff" size={0.045} transparent opacity={0.95} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></points>
+        <mesh ref={orbitA} rotation-x={Math.PI / 2.4}><torusGeometry args={[1.45, 0.012, 8, 96]} /><Glow /></mesh>
+        <mesh ref={orbitB} rotation-x={Math.PI / 1.7} rotation-y={0.4}><torusGeometry args={[1.7, 0.008, 8, 96]} /><Glow color={ORANGE} opacity={0.7} /></mesh>
+      </group>
+      <pointLight position={[0, 4.7, 0]} color={CYAN} intensity={40} distance={16} decay={1.6} />
+    </group>
+  );
+}
+
+/** The ceiling: a big glowing light ring with radial light panels. */
+function Ceiling() {
+  const ring = useRef<THREE.Mesh>(null!);
+  useFrame((state) => { (ring.current.material as THREE.MeshBasicMaterial).opacity = 0.85 + 0.15 * Math.sin(state.clock.elapsedTime * 1.3); });
+  return (
+    <group position={[0, CEIL, 0]}>
+      <mesh rotation-x={Math.PI / 2}><circleGeometry args={[WALL_R, 96]} /><meshStandardMaterial color={HULL_DARK} side={THREE.DoubleSide} metalness={0.6} roughness={0.5} /></mesh>
+      <mesh ref={ring} rotation-x={Math.PI / 2} position={[0, -0.05, 0]}><torusGeometry args={[4.6, 0.16, 12, 128]} /><Glow color="#5cc8ff" /></mesh>
+      <mesh rotation-x={Math.PI / 2} position={[0, -0.04, 0]}><ringGeometry args={[3.2, 4.3, 96]} /><Glow color={BLUE} opacity={0.3} side={THREE.DoubleSide} /></mesh>
+      {Array.from({ length: 16 }, (_, i) => {
+        const a = (i / 16) * Math.PI * 2, [x, z] = polar(a, 9.6);
+        return <mesh key={i} position={[x, -0.04, z]} rotation-y={a} rotation-x={Math.PI / 2}><planeGeometry args={[0.55, 8.2]} /><Glow color={i % 2 ? BLUE : CYAN} opacity={i % 2 ? 0.25 : 0.45} side={THREE.DoubleSide} /></mesh>;
+      })}
+      <mesh rotation-x={Math.PI / 2} position={[0, -0.05, 0]}><torusGeometry args={[14, 0.08, 8, 128]} /><Glow opacity={0.7} /></mesh>
+    </group>
+  );
+}
+
+/** The curved outer wall: pillars with light strips, big live screens between them, and a sealed door. */
+function Wall({ huds }: { huds: Huds }) {
+  const N = 16;
+  const DOOR = 13; // the slot facing the gap between the outbox and the AI desk
+  return (
+    <group>
+      <mesh position={[0, CEIL / 2, 0]}><cylinderGeometry args={[WALL_R, WALL_R, CEIL, 96, 1, true]} /><meshStandardMaterial color={HULL_DARK} side={THREE.BackSide} metalness={0.5} roughness={0.55} /></mesh>
+      {[0.35, 2.0, 9.6, CEIL - 0.3].map((y, i) => (
+        <mesh key={y} position={[0, y, 0]}><cylinderGeometry args={[WALL_R - 0.05, WALL_R - 0.05, i === 0 ? 0.08 : 0.04, 96, 1, true]} /><Glow color={i === 0 ? CYAN : i === 2 ? ORANGE : BLUE} opacity={i === 0 ? 0.9 : 0.5} side={THREE.BackSide} /></mesh>
+      ))}
+      {Array.from({ length: N }, (_, i) => {
+        const a = (i / N) * Math.PI * 2, [x, z] = polar(a, WALL_R - 0.5);
+        const strip = i % 4 === 0 ? ORANGE : CYAN;
+        return (
+          <group key={`p${i}`} position={[x, 0, z]} rotation-y={a + Math.PI}>
+            <mesh position={[0, CEIL / 2, 0]} castShadow><boxGeometry args={[1.0, CEIL, 1.0]} /><Hull color={HULL} /></mesh>
+            <mesh position={[0, CEIL / 2, 0.51]}><planeGeometry args={[0.12, CEIL - 2.5]} /><Glow color={strip} /></mesh>
+            <mesh position={[0, 0.3, 0.6]}><boxGeometry args={[1.2, 0.6, 0.2]} /><Hull color={TRIM} /></mesh>
+          </group>
+        );
+      })}
+      {Array.from({ length: N }, (_, i) => {
+        const a = ((i + 0.5) / N) * Math.PI * 2, [x, z] = polar(a, WALL_R - 0.25);
+        if (i === DOOR) return (
+          <group key={`s${i}`} position={[x, 0, z]} rotation-y={a + Math.PI}>
+            <mesh position={[0, 2.9, 0]}><boxGeometry args={[3.6, 5.8, 0.2]} /><Hull color={TRIM} metal={0.7} /></mesh>
+            {[-0.9, 0.9].map((dx) => <mesh key={dx} position={[dx, 2.8, 0.12]}><boxGeometry args={[1.72, 5.4, 0.08]} /><Hull color={HULL} metal={0.7} /></mesh>)}
+            <mesh position={[0, 2.8, 0.17]}><planeGeometry args={[0.05, 5.4]} /><Glow color={ORANGE} /></mesh>
+            {[[0, 5.85, 3.8, 0.08], [-1.85, 2.9, 0.08, 5.9], [1.85, 2.9, 0.08, 5.9]].map(([px, py, w, h], k) => <mesh key={k} position={[px, py, 0.12]}><planeGeometry args={[w, h]} /><Glow color={ORANGE} /></mesh>)}
+            <mesh position={[0, 6.6, 0.12]}><planeGeometry args={[1.4, 0.3]} /><Glow color="#ff4d4d" opacity={0.8} /></mesh>
+          </group>
+        );
+        const big = i % 2 === 0;
+        return (
+          <group key={`s${i}`} position={[x, 0, z]} rotation-y={a + Math.PI}>
+            {big ? (
+              <>
+                <group position={[0, 5.6, 0]}><Screen huds={huds} kind={i % 4} w={6.2} h={3.9} /></group>
+                <group position={[-1.6, 2.6, 0]}><Screen huds={huds} kind={(i + 1) % 4} w={2.6} h={1.5} color={ORANGE} opacity={0.75} /></group>
+                <group position={[1.6, 2.6, 0]}><Screen huds={huds} kind={(i + 2) % 4} w={2.6} h={1.5} opacity={0.75} /></group>
+              </>
+            ) : (
+              <>
+                <group position={[0, 7.0, 0]}><Screen huds={huds} kind={(i + 3) % 4} w={5.2} h={2.4} /></group>
+                <group position={[0, 4.3, 0]}><Screen huds={huds} kind={(i + 1) % 4} w={5.2} h={2.4} color="#9fd8ff" opacity={0.7} /></group>
+              </>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/** Server racks along the wall, their lights blinking. */
+function Racks() {
+  const leds = useRef<THREE.InstancedMesh>(null!);
+  const racks = useMemo(() => {
+    const out: { x: number; z: number; a: number }[] = [];
+    [0.55, 1.35, 2.2, 3.35, 4.35, 5.4].forEach((a0) => {
+      for (let k = -1; k <= 1; k++) {
+        const a = a0 + k * 0.075, [x, z] = polar(a, 17.6);
+        out.push({ x, z, a });
+      }
+    });
+    return out;
+  }, []);
+  const PER = 14;
+  const palette = useMemo(() => [new THREE.Color("#4dff9a"), new THREE.Color("#ff4d4d"), new THREE.Color(CYAN), new THREE.Color("#0a1322")], []);
+  useEffect(() => {
+    const o = new THREE.Object3D();
+    racks.forEach((r, i) => {
+      for (let k = 0; k < PER; k++) {
+        const col = k % 2, row = (k / 2) | 0;
+        o.position.set(r.x, 0.5 + row * 0.32, r.z);
+        o.rotation.set(0, r.a + Math.PI, 0);
+        o.translateX(-0.22 + col * 0.44);
+        o.translateZ(0.42);
+        o.updateMatrix();
+        leds.current.setMatrixAt(i * PER + k, o.matrix);
+        leds.current.setColorAt(i * PER + k, palette[(i * 7 + k * 3) % 3]);
+      }
+    });
+    leds.current.instanceMatrix.needsUpdate = true;
+    if (leds.current.instanceColor) leds.current.instanceColor.needsUpdate = true;
+  }, [racks, palette]);
+  const last = useRef(0);
+  useFrame((state) => {
+    if (state.clock.elapsedTime - last.current < 0.12) return;
+    last.current = state.clock.elapsedTime;
+    const n = racks.length * PER;
+    for (let j = 0; j < 14; j++) {
+      const idx = Math.floor(Math.random() * n), roll = Math.random();
+      leds.current.setColorAt(idx, palette[roll < 0.55 ? 0 : roll < 0.65 ? 1 : roll < 0.85 ? 2 : 3]);
+    }
+    if (leds.current.instanceColor) leds.current.instanceColor.needsUpdate = true;
+  });
   return (
     <>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow><circleGeometry args={[14, 72]} /><meshStandardMaterial color="#efe7d6" /></mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.005, 0]}><ringGeometry args={[3.2, 3.5, 64]} /><meshStandardMaterial color="#0f4c4a" transparent opacity={0.25} /></mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.004, 0]}><circleGeometry args={[3.2, 64]} /><meshStandardMaterial color="#dcebe7" /></mesh>
-      <mesh geometry={wall} position={[0, 1.2, 0]}><meshStandardMaterial color="#f7f2e6" side={THREE.BackSide} /></mesh>
+      {racks.map((r, i) => (
+        <group key={i} position={[r.x, 0, r.z]} rotation-y={r.a + Math.PI}>
+          <mesh position={[0, 1.4, 0]} castShadow><boxGeometry args={[1.25, 2.8, 0.8]} /><Hull color={HULL} /></mesh>
+          <mesh position={[0, 1.4, 0.41]}><planeGeometry args={[1.05, 2.6]} /><meshStandardMaterial color="#060c18" metalness={0.3} roughness={0.3} /></mesh>
+          <mesh position={[0, 2.75, 0.41]}><planeGeometry args={[1.05, 0.04]} /><Glow color={CYAN} opacity={0.8} /></mesh>
+        </group>
+      ))}
+      <instancedMesh ref={leds} args={[undefined, undefined, racks.length * PER]} frustumCulled={false}>
+        <boxGeometry args={[0.16, 0.05, 0.02]} />
+        <meshBasicMaterial toneMapped={false} />
+      </instancedMesh>
+    </>
+  );
+}
+
+/** Standing consoles in an outer ring, each with a small live screen. */
+function OuterConsoles({ huds }: { huds: Huds }) {
+  return (
+    <>
+      {Array.from({ length: 14 }, (_, i) => {
+        const a = (i / 14) * Math.PI * 2 + 0.11, [x, z] = polar(a, 13.6);
+        return (
+          <group key={i} position={[x, 0, z]} rotation-y={a + Math.PI}>
+            <mesh position={[0, 0.55, 0]} castShadow><boxGeometry args={[0.5, 1.1, 0.45]} /><Hull color={TRIM} /></mesh>
+            <mesh position={[0, 1.2, 0.05]} rotation-x={-0.6} castShadow><boxGeometry args={[1.3, 0.08, 0.8]} /><Hull /></mesh>
+            <mesh position={[0, 1.25, 0.06]} rotation-x={-0.6 - Math.PI / 2}><planeGeometry args={[1.15, 0.65]} /><meshBasicMaterial map={huds[i % 4]} color={i % 3 ? CYAN : ORANGE} transparent blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
+            <group position={[0, 2.15, -0.1]}><Screen huds={huds} kind={(i + 2) % 4} w={1.2} h={0.75} opacity={0.55} /></group>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
+/** Dust motes drifting up through the light. */
+function Motes() {
+  const COUNT = 420;
+  const geo = useMemo(() => {
+    const p = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const a = Math.random() * Math.PI * 2, r = 2 + Math.sqrt(Math.random()) * 16;
+      p[i * 3] = Math.sin(a) * r; p[i * 3 + 1] = Math.random() * CEIL; p[i * 3 + 2] = Math.cos(a) * r;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+    return g;
+  }, []);
+  useEffect(() => () => geo.dispose(), [geo]);
+  useFrame((_, dt) => {
+    const a = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < COUNT; i++) {
+      let y = a.getY(i) + dt * (0.15 + (i % 7) * 0.03);
+      if (y > CEIL) y = 0;
+      a.setY(i, y);
+    }
+    a.needsUpdate = true;
+  });
+  return <points geometry={geo}><pointsMaterial color={CYAN} size={0.05} transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></points>;
+}
+
+function Room({ huds }: { huds: Huds }) {
+  const grid = useMemo(() => {
+    const g = new THREE.PolarGridHelper(WALL_R, 24, 10, 96, "#1f3d63", "#16304f");
+    (g.material as THREE.Material).transparent = true;
+    (g.material as THREE.Material).opacity = 0.55;
+    g.position.y = 0.004;
+    return g;
+  }, []);
+  return (
+    <>
+      <mesh rotation-x={-Math.PI / 2} receiveShadow><circleGeometry args={[WALL_R, 96]} /><meshStandardMaterial color="#0b1526" metalness={0.65} roughness={0.38} /></mesh>
+      <primitive object={grid} />
+      {/* the orange-trimmed platform edge, and an outer service ring */}
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.006, 0]}><ringGeometry args={[10.7, 10.85, 128]} /><Glow color={ORANGE} opacity={0.9} /></mesh>
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.005, 0]}><ringGeometry args={[10.85, 11.6, 128]} /><meshStandardMaterial color="#141f30" metalness={0.7} roughness={0.35} /></mesh>
+      {Array.from({ length: 48 }, (_, i) => {
+        const a = (i / 48) * Math.PI * 2, [x, z] = polar(a, 11.25);
+        return <mesh key={i} position={[x, 0.007, z]} rotation-y={a} rotation-x={-Math.PI / 2}><planeGeometry args={[0.5, 0.12]} /><Glow color={i % 6 === 0 ? ORANGE : CYAN} opacity={i % 6 === 0 ? 0.9 : 0.35} /></mesh>;
+      })}
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.006, 0]}><ringGeometry args={[15.9, 16.0, 128]} /><Glow color={CYAN} opacity={0.35} /></mesh>
+      <Core />
+      <Ceiling />
+      <Wall huds={huds} />
+      <Racks />
+      <OuterConsoles huds={huds} />
+      <Motes />
     </>
   );
 }
@@ -323,7 +762,7 @@ function CameraRig({ director, mode, view, rightInset }: { director: OfficeDirec
     const { az, zoom } = view.current ?? { az: 0, zoom: 1 };
     // Narrow (phone) views see less side to side, so step back to keep the same framing.
     const narrow = Math.min(1.8, Math.max(1, 1.25 / (size.width / size.height)));
-    const dist = (m ? 11.5 : 17) * zoom * narrow, h = (m ? 7 : 12.5) * zoom * narrow;
+    const dist = (m ? 11.5 : 19) * zoom * narrow, h = (m ? 6.5 : 10.5) * zoom * narrow;
     const tx = m ? m.pos.x : 0, tz = m ? m.pos.z : -0.8;
     // Desks ring the room and the middle is open, so shooting from the middle outward never
     // puts another desk or mascot between the camera and the one being followed.
@@ -331,7 +770,7 @@ function CameraRig({ director, mode, view, rightInset }: { director: OfficeDirec
     baseAz.current = dampAngleTo(baseAz.current, fromCenter, reduced ? 100 : 1.6, dt);
     const a = baseAz.current + az + (m ? 0.6 : 0); // a little off-center: a three-quarter view, not straight at their back
     want.current.set(tx + Math.sin(a) * dist, h, tz + Math.cos(a) * dist);
-    wantLook.current.set(tx, m ? 1.1 : 0, tz);
+    wantLook.current.set(tx, m ? 1.3 : 0.8, tz);
     // A panel covers the right side of the screen: slide the view sideways so the
     // subject sits in the middle of the part you can still see.
     if (rightInset > 0 && size.width > rightInset) {
@@ -351,6 +790,24 @@ function CameraRig({ director, mode, view, rightInset }: { director: OfficeDirec
   return null;
 }
 
+/** Lights, the room and the stations, all sharing the live screen graphics. */
+function SceneContent({ snap }: { snap: OfficeSnapshot }) {
+  const huds = useHuds();
+  return (
+    <>
+      <ambientLight color="#5b7cab" intensity={0.55} />
+      <hemisphereLight args={["#9cc9ff", "#0b1526", 0.9]} />
+      <directionalLight position={[6, 14, 9]} intensity={1.3} color="#dbe9ff" />
+      <pointLight position={[0, CEIL - 1, 0]} color="#5cc8ff" intensity={60} distance={30} decay={1.4} />
+      <pointLight position={[-14, 4, -10]} color={ORANGE} intensity={25} distance={18} decay={1.6} />
+      <pointLight position={[14, 4, -10]} color={CYAN} intensity={25} distance={18} decay={1.6} />
+      <Room huds={huds} />
+      <Stations snap={snap} huds={huds} />
+      <DataStreams snap={snap} />
+    </>
+  );
+}
+
 export default function OfficeScene({ director, snap, mode, view, onPick, rightInset = 0, labels }: {
   director: OfficeDirector; snap: OfficeSnapshot; mode: FollowMode; view: React.RefObject<ViewControl>; onPick: (id: MascotId) => void;
   /** Pixels on the right covered by a panel; the camera centers the subject in the rest. */
@@ -362,24 +819,21 @@ export default function OfficeScene({ director, snap, mode, view, onPick, rightI
   const tops = useRef<Partial<Record<MascotId, number>>>({});
   return (
     <Canvas
-      camera={{ position: [0, 12.5, 16], fov: 40, near: 0.1, far: 200 }}
+      camera={{ position: [0, 10.5, 18], fov: 42, near: 0.1, far: 200 }}
       dpr={[1, 1.5]}
       fallback={<div className="grid h-full place-items-center text-sm text-muted">This device can&apos;t show the 3D office.</div>}
     >
-      <color attach="background" args={["#f5f1e8"]} />
-      <fog attach="fog" args={["#f5f1e8", 28, 55]} />
+      <color attach="background" args={["#030914"]} />
+      <fog attach="fog" args={["#030914", 30, 75]} />
       <Ticker director={director} />
-      <hemisphereLight args={["#fff6e5", "#c9c1ad", 1.1]} />
-      <directionalLight position={[8, 16, 10]} intensity={1.6} />
-      <Room />
-      <Stations snap={snap} />
+      <SceneContent snap={snap} />
       <Suspense fallback={null}>
         {MASCOTS.map((def) => (
           <Mascot key={def.id} def={def} director={director} followed={followed === def.id} onPick={onPick} tops={tops} />
         ))}
       </Suspense>
       {MASCOTS.map((def) => <Destination key={def.id} def={def} director={director} />)}
-      <ContactShadows position={[0, 0.01, 0]} scale={30} opacity={0.3} blur={2.4} far={4} resolution={512} />
+      <ContactShadows position={[0, 0.01, 0]} scale={30} opacity={0.55} blur={2.4} far={4} resolution={512} color="#000814" />
       <CameraRig director={director} mode={mode} view={view} rightInset={rightInset} />
       <LabelProjector director={director} labels={labels} tops={tops} />
     </Canvas>

@@ -88,7 +88,7 @@ export default function Office({
       <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden>
         {(Object.keys(STATIONS) as StationId[]).map((id) => (
           <div key={id} ref={label(`s:${id}`)} style={{ opacity: 0 }}
-            className={`absolute left-0 top-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-medium will-change-transform ${focus.has(id) ? "bg-ink text-[11px] text-white" : "bg-white/50 text-[10px] text-muted/80"}`}>
+            className={`absolute left-0 top-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-medium will-change-transform ${focus.has(id) ? "border border-tide/60 bg-night/85 text-[11px] text-tide shadow-[0_0_16px_rgb(125_211_252/0.45)]" : "border border-tide/15 bg-night/55 text-[10px] text-muted"}`}>
             {STATIONS[id].name}
           </div>
         ))}
@@ -97,9 +97,9 @@ export default function Office({
           const on = followed === m.id;
           return (
             <div key={m.id} ref={label(`m:${m.id}`)} style={{ opacity: 0, ...(on ? { background: m.color } : {}) }}
-              className={`absolute left-0 top-0 max-w-[240px] truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm will-change-transform ${on ? "border-transparent text-white" : "border-white/70 bg-white/85 text-ink"}`}>
+              className={`absolute left-0 top-0 max-w-[240px] truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm will-change-transform ${on ? "border-transparent text-night shadow-[0_0_18px_currentColor]" : "border-tide/20 bg-night/75 text-ink backdrop-blur-sm"}`}>
               {m.name}
-              {s?.label && <span className={`ml-1 font-normal ${on ? "text-white/85" : "text-muted"}`}>· {s.label}</span>}
+              {s?.label && <span className={`ml-1 font-normal ${on ? "text-night/75" : "text-muted"}`}>· {s.label}</span>}
             </div>
           );
         })}
@@ -107,7 +107,7 @@ export default function Office({
 
       {hud && (
         <>
-          <div className={`pointer-events-none absolute ${followClass} z-40 max-w-[min(360px,80%)] rounded-2xl border border-white/70 bg-white/85 px-3 py-2 text-xs shadow-sm backdrop-blur`} aria-live="polite">
+          <div className={`pointer-events-none absolute ${followClass} z-40 max-w-[min(360px,80%)] rounded-2xl border border-tide/20 bg-night/70 px-3 py-2 text-xs shadow-[0_10px_40px_rgb(0_0_0/0.45),inset_0_0_30px_rgb(125_211_252/0.06)] backdrop-blur-md`} aria-live="polite">
             {def && f ? (
               <>
                 <div className="flex items-center gap-1.5">
@@ -131,23 +131,23 @@ export default function Office({
           </div>
 
           <div className={`absolute ${chipsClass} z-40 flex flex-wrap items-center justify-center gap-1`}>
-            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Auto</button>
+            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-tide text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}>Auto</button>
             {MASCOTS.map((m) => {
               const s = snap.mascots.find((x) => x.id === m.id)!;
               const on = mode === m.id;
               return (
                 <button key={m.id} onClick={() => setMode(m.id)} title={`${m.name}: ${m.role}`}
-                  className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${on ? "text-white" : "bg-white/85 text-ink"}`}
+                  className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${on ? "text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}
                   style={on ? { background: m.color } : undefined}>
-                  <span className="h-2 w-2 rounded-full" style={{ background: on ? "#fff" : m.color }} />
+                  <span className="h-2 w-2 rounded-full" style={{ background: on ? "#06142b" : m.color, boxShadow: on ? undefined : `0 0 8px ${m.color}` }} />
                   {m.name}
-                  <span className="hidden h-1 w-6 overflow-hidden rounded-full bg-black/10 sm:inline-block" aria-hidden>
-                    <span className="block h-full rounded-full" style={{ width: `${(s.score / maxScore) * 100}%`, background: on ? "#fff" : m.color }} />
+                  <span className="hidden h-1 w-6 overflow-hidden rounded-full bg-white/10 sm:inline-block" aria-hidden>
+                    <span className="block h-full rounded-full" style={{ width: `${(s.score / maxScore) * 100}%`, background: on ? "#06142b" : m.color }} />
                   </span>
                 </button>
               );
             })}
-            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-ink text-white" : "bg-white/85 text-ink"}`}>Whole office</button>
+            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-tide text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}>Whole office</button>
           </div>
         </>
       )}

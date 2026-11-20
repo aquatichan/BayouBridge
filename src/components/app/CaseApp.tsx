@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Office from "@/components/office/Office";
-import LogoMark from "@/components/site/LogoMark";
+import Image from "next/image";
 import { shrinkImage } from "@/lib/client/files";
 import { RunError, streamRun } from "@/lib/client/stream";
 import { OfficeDirector } from "@/lib/office/director";
@@ -19,7 +19,8 @@ import { STRINGS, type Lang } from "./i18n";
 type Step = "welcome" | "consent" | "home" | "upload" | "office";
 const SESSION_KEY = "bayoubridge.case";
 const LANG_KEY = "bayoubridge.lang";
-const PANEL_PX = 432; // desktop panel width + margin, so the camera centers in the rest
+const SIDE_MIN = 340, SIDE_MAX = 640, SIDE_RAIL = 56; // desktop sidebar: resizable between min/max, or collapsed to a rail
+const SIDE_KEY = "bayoubridge.sidebar";
 
 const store = {
   get: (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } },
@@ -52,6 +53,30 @@ export type CaseAppStart = "welcome" | "consent" | "sample";
 
 export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart }) {
   const wide = useWide();
+  // The desktop sidebar: drag its left edge to resize, or fold it to a rail. Remembered per browser.
+  const [sideW, setSideW] = useState(420);
+  const [collapsed, setCollapsed] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(SIDE_KEY) ?? "null");
+      if (v && typeof v.w === "number") { setSideW(Math.min(SIDE_MAX, Math.max(SIDE_MIN, v.w))); setCollapsed(!!v.c); }
+    } catch {}
+  }, []);
+  useEffect(() => { try { localStorage.setItem(SIDE_KEY, JSON.stringify({ w: sideW, c: collapsed })); } catch {} }, [sideW, collapsed]);
+  function startDrag(e: React.PointerEvent) {
+    e.preventDefault();
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      const w = window.innerWidth - ev.clientX;
+      if (w < SIDE_MIN - 90) { setCollapsed(true); return; } // drag far enough right and it folds away
+      setCollapsed(false);
+      setSideW(Math.min(SIDE_MAX, Math.max(SIDE_MIN, w)));
+    };
+    const up = () => { setDragging(false); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
   const [lang, setLang] = useState<Lang>("en");
   const t = STRINGS[lang];
   const [step, setStep] = useState<Step>("welcome");
@@ -225,43 +250,45 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const minutes = events.reduce((n, e) => n + (e.minutesSaved ?? 0), 0);
   const billPending = sample && !!state && state.followUp?.evidence === "proof_of_occupancy" && !state.documents.some((d) => d.kind === "utility_bill");
   const inOffice = step === "office";
+  const sideOpen = !collapsed;
+  const side = inOffice && wide ? (sideOpen ? sideW : SIDE_RAIL) : 0;
 
   return (
-    <div className="min-h-screen md:h-screen md:overflow-hidden">
+    <div className="min-h-screen md:h-screen md:overflow-hidden" style={{ ["--side" as string]: `${side}px` }}>
       {/* The office. Full screen on desktop; the top half of the screen on phones. */}
       <Office
         director={director}
         hud={inOffice}
         className="relative h-[56vh] md:fixed md:inset-0 md:h-auto"
         followClass="left-3 top-16 md:left-4 md:top-20"
-        chipsClass="inset-x-2 bottom-2 md:left-4 md:right-[452px] md:bottom-4"
-        rightInset={inOffice && wide ? PANEL_PX : 0}
+        chipsClass="inset-x-2 bottom-2 md:left-4 md:right-[calc(var(--side)+16px)] md:bottom-4 transition-[right] duration-300"
+        rightInset={side}
       />
 
       {/* Top bar */}
-      <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-2 px-3 py-2 md:px-4 md:py-3">
-        <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/70 bg-panel/90 py-1 pl-1 pr-3 shadow-sm backdrop-blur">
+      <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-2 px-3 py-2 transition-[right] duration-300 md:right-[var(--side)] md:px-4 md:py-3">
+        <div className="flex min-w-0 items-center gap-2 rounded-full border border-tide/15 bg-panel/75 shadow-[0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-md py-1 pl-1 pr-3">
           <Link href="/" aria-label="BayouBridge home" className="shrink-0">
-            <LogoMark size={28} className="shrink-0" />
+            <Image src="/logo.png" alt="" width={28} height={28} className="size-7 shrink-0" />
           </Link>
           <div className="min-w-0 leading-tight">
-            <div className="text-sm font-bold text-bayou">BayouBridge</div>
+            <div className="text-sm font-bold text-ink">BayouBridge</div>
             {household && inOffice && <div className="hidden truncate text-[11px] text-muted sm:block">{household.name} · {household.address}</div>}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-xs">
-          {inOffice && minutes > 0 && <span className="hidden rounded-full bg-bayou-soft px-2.5 py-1 font-semibold text-bayou shadow-sm sm:inline">⏱ {t.minutes(minutes)}</span>}
-          {sample && inOffice && <span className="whitespace-nowrap rounded-full bg-amber-soft px-2.5 py-1 font-medium text-amber shadow-sm" title={t.sampleNote}>{wide ? t.sampleNote.split(".")[0] : t.sampleShort}</span>}
-          <div className="flex overflow-hidden rounded-full border border-white/70 bg-panel/90 shadow-sm backdrop-blur">
+          {inOffice && minutes > 0 && <span className="hidden whitespace-nowrap rounded-full bg-bayou-soft px-2.5 py-1 font-semibold text-tide shadow-sm lg:inline">⏱ {t.minutes(minutes)}</span>}
+          {sample && inOffice && <span className="whitespace-nowrap rounded-full bg-amber-soft px-2.5 py-1 font-medium text-amber shadow-sm" title={t.sampleNote}>{wide && !sideOpen ? t.sampleNote.split(".")[0] : t.sampleShort}</span>}
+          <div className="flex overflow-hidden rounded-full border border-tide/15 bg-panel/75 shadow-[0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-md">
             {(["en", "es"] as const).map((l) => (
               <button key={l} onClick={() => chooseLang(l)} className={`px-2.5 py-1 font-semibold ${lang === l ? "bg-bayou text-white" : "text-muted"}`}>{l.toUpperCase()}</button>
             ))}
           </div>
           {inOffice && (
             <div className="relative">
-              <button onClick={() => setMenu((m) => !m)} aria-label="Menu" aria-expanded={menu} className="rounded-full border border-white/70 bg-panel/90 px-2.5 py-1 font-bold shadow-sm backdrop-blur">⋯</button>
+              <button onClick={() => setMenu((m) => !m)} aria-label="Menu" aria-expanded={menu} className="rounded-full border border-tide/15 bg-panel/75 shadow-[0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-md px-2.5 py-1 font-bold text-ink">⋯</button>
               {menu && (
-                <div className="absolute right-0 top-9 w-48 overflow-hidden rounded-xl border border-line bg-panel text-sm shadow-lg">
+                <div className="absolute right-0 top-9 w-48 overflow-hidden rounded-xl border border-tide/15 bg-panel/95 text-sm shadow-[0_20px_50px_rgb(0_0_0/0.5)] backdrop-blur-md">
                   <button onClick={forget} className="block w-full px-3 py-2 text-left hover:bg-bg">{sample ? t.menu.restart : t.menu.delete}</button>
                   <Link href="/details" className="block px-3 py-2 hover:bg-bg">{t.menu.details}</Link>
                 </div>
@@ -272,7 +299,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
       </header>
 
       {(error || notice) && (
-        <div role="alert" className="fixed inset-x-0 top-16 z-50 mx-auto w-fit max-w-[92vw] rounded-full bg-ink px-4 py-2 text-xs text-white shadow-lg md:top-4">
+        <div role="alert" className="fixed inset-x-0 top-16 z-50 mx-auto w-fit max-w-[92vw] rounded-full bg-ink px-4 py-2 text-xs text-night shadow-lg md:top-4">
           {error ? `${t.error}: ${error}` : notice}
           <button onClick={() => { setError(null); setNotice(null); }} className="ml-3 opacity-70" aria-label="Dismiss">✕</button>
         </div>
@@ -284,14 +311,33 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
       {step === "upload" && <Upload lang={lang} claudeOn={claudeOn} busy={busy} error={error} onSubmit={upload} />}
 
       {inOffice && (
-        <div className="relative z-30 p-3 md:fixed md:bottom-4 md:right-4 md:top-20 md:flex md:w-[420px] md:flex-col md:p-0">
-          <CasePanel
-            s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample}
-            billPending={billPending} approving={approving} approveError={approveError}
-            onApprove={approve} onUpload={followUp}
-            onBill={() => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: ["doc-electric-bill"] })}
-          />
-        </div>
+        <aside aria-label={t.tabs.next}
+          className="relative z-30 p-3 md:fixed md:inset-y-0 md:right-0 md:flex md:flex-col md:border-l md:border-tide/15 md:bg-night/80 md:p-0 md:shadow-[-30px_0_80px_rgb(0_0_0/0.45)] md:backdrop-blur-xl"
+          style={wide ? { width: side, transition: dragging ? "none" : "width 300ms cubic-bezier(.2,.8,.2,1)" } : undefined}>
+          {wide && sideOpen && (
+            <div role="separator" aria-orientation="vertical" aria-label="Resize panel" tabIndex={0}
+              onPointerDown={startDrag} onDoubleClick={() => setSideW(420)}
+              onKeyDown={(e) => { if (e.key === "ArrowLeft") setSideW((w) => Math.min(SIDE_MAX, w + 24)); if (e.key === "ArrowRight") setSideW((w) => Math.max(SIDE_MIN, w - 24)); }}
+              className="group absolute inset-y-0 -left-1.5 z-10 w-3 cursor-col-resize">
+              <span className="absolute inset-y-0 left-1/2 w-px bg-tide/0 transition group-hover:bg-tide/60 group-focus-visible:bg-tide" />
+            </div>
+          )}
+          {wide && !sideOpen ? (
+            <button onClick={() => setCollapsed(false)} aria-label="Open panel" title="Open panel"
+              className="flex h-full w-full flex-col items-center gap-3 pt-5 text-muted transition hover:text-tide">
+              <span className="grid size-9 place-items-center rounded-full border border-tide/20 text-lg">‹</span>
+              <span className="text-xs font-semibold [writing-mode:vertical-rl]">{t.tabs.next}</span>
+            </button>
+          ) : (
+            <CasePanel
+              s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample}
+              billPending={billPending} approving={approving} approveError={approveError}
+              onApprove={approve} onUpload={followUp}
+              onBill={() => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: ["doc-electric-bill"] })}
+              onCollapse={wide ? () => setCollapsed(true) : undefined}
+            />
+          )}
+        </aside>
       )}
     </div>
   );

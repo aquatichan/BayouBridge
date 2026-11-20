@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  /* App palette: navy ink on cream paper, matching the landing page */
-  --bg: #f2eee6;
-  --panel: #fbf9f4;
-  --ink: #0b1a2e;
-  --muted: #56657a;
-  --line: #e2dccd;
-  --bayou: #0b2a4a;
-  --bayou-soft: #dde8f3;
-  --moss: #3f7a5a;
-  --clay: #b8462f;
-  --clay-soft: #f7e1da;
-  --amber: #a86a12;
-  --amber-soft: #f8ead0;
+  /* App palette: the command room at night. Cream text on navy glass. */
+  --bg: #050d1c;
+  --panel: #0a1a30;
+  --ink: #eef2f7;
+  --muted: #93a4ba;
+  --line: #1d3352;
+  --bayou: #2f8fd8;
+  --bayou-soft: #10304f;
+  --moss: #5fc48c;
+  --clay: #f07a62;
+  --clay-soft: #3a1b1a;
+  --amber: #f5b544;
+  --amber-soft: #33270f;
 
   /* Landing page (night palette) */
   --night: #06142b;

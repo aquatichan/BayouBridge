@@ -7,7 +7,9 @@ import { Frame, useLang } from "@/components/landing/Landing";
 import Nav from "@/components/landing/Nav";
 import Footer from "@/components/site/Footer";
 import type { Lang } from "@/components/landing/strings";
+import Dag from "./Dag";
 import Flow from "./Flow";
+import Trace from "./Trace";
 import type { Article, Figure as FigureData } from "./article";
 
 // Newspaper-style pages ("The details" and the privacy policy): masthead, a big
@@ -86,7 +88,9 @@ export default function Newspaper({ article }: { article: Record<Lang, Article> 
               </div>
               {figures.length > 0 && <div className="space-y-12">{figures.map((f) => <Figure key={f.title} f={f} />)}</div>}
             </div>
+            {s.dag && <Dag d={s.dag} />}
             {s.flow && <Flow f={s.flow} />}
+            {s.trace && <Trace t={s.trace} />}
           </section>
           );
         })}

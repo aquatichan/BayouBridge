@@ -22,6 +22,8 @@ export default function CasePanel(props: {
   s: CaseState | null; events: ActivityEvent[]; tasks: Record<string, TaskUpdate>; running: boolean; lang: Lang;
   outbox: OutboxItem[]; sample: boolean; billPending: boolean; approving: string | null; approveError: string | null;
   onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void; onBill: () => void;
+  /** Desktop only: fold the sidebar away. */
+  onCollapse?: () => void;
 }) {
   const { s, events, running, lang, outbox } = props;
   const t = STRINGS[lang];
@@ -35,15 +37,21 @@ export default function CasePanel(props: {
   ];
 
   return (
-    <section className="flex min-h-0 flex-col rounded-3xl border border-white/70 bg-panel/95 shadow-xl backdrop-blur">
-      <nav className="flex gap-1 overflow-x-auto border-b border-line p-2" aria-label="Case">
+    <section className="flex min-h-0 flex-col rounded-3xl border border-tide/15 bg-panel/80 backdrop-blur-xl md:h-full md:rounded-none md:border-0 md:bg-transparent md:backdrop-blur-none">
+      <div className="flex items-center gap-1 border-b border-line p-2 md:px-3 md:pt-3">
+      <nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto pr-4 [mask-image:linear-gradient(to_right,black_85%,transparent)] [scrollbar-width:none]" aria-label="Case">
         {tabs.map(([id, label, n]) => (
           <button key={id} onClick={() => setTab(id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${tab === id ? "bg-ink text-white" : "text-muted hover:bg-bg"}`}>
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${tab === id ? "bg-tide text-night" : "text-muted hover:bg-bg"}`}>
             {label}{n ? <span className="ml-1 opacity-70">{n}</span> : null}
           </button>
         ))}
       </nav>
+      {props.onCollapse && (
+        <button onClick={props.onCollapse} aria-label="Hide panel" title="Hide panel"
+          className="grid size-8 shrink-0 place-items-center rounded-full text-lg text-muted transition hover:bg-bayou-soft hover:text-tide">›</button>
+      )}
+      </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {tab === "next" && <NextSteps {...props} has={has} read={read} />}
@@ -52,7 +60,7 @@ export default function CasePanel(props: {
           <article key={m.programId} className="rounded-2xl border border-line p-3">
             <div className="flex items-start justify-between gap-2">
               <h3 className="text-sm font-semibold">{m.name}</h3>
-              <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] font-medium text-bayou">{t.possibleMatch}</span>
+              <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] font-medium text-tide">{t.possibleMatch}</span>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-bayou transition-all duration-700" style={{ width: `${m.readiness * 100}%` }} /></div>
             <div className="mt-1 flex justify-between gap-2 text-[11px] text-muted">
@@ -63,7 +71,7 @@ export default function CasePanel(props: {
               {m.evidence.map((e) => <li key={e.type} className={e.satisfiedBy.length ? "" : "text-clay"}>{e.satisfiedBy.length ? "✅" : "⛔"} {e.label}</li>)}
             </ul>
             <p className="mt-2 text-[11px] text-muted">{m.caveat}</p>
-            <a href={m.source.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-bayou underline">{t.source}: {m.source.label} ↗</a>
+            <a href={m.source.url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-medium text-tide underline">{t.source}: {m.source.label} ↗</a>
           </article>
         )) : <Waiting>{t.waitingResults}</Waiting>)}
 
@@ -121,7 +129,7 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
     <>
       {running && (
         <div className="rounded-2xl bg-bayou-soft p-3 text-sm">
-          <div className="flex items-center gap-2 font-semibold text-bayou">
+          <div className="flex items-center gap-2 font-semibold text-tide">
             <span aria-hidden className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
             {total ? t.readingDocs(Math.min(read.size, total), total) : `${t.working}…`}
           </div>
@@ -137,13 +145,13 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
       )}
 
       {s?.followUp && has("Scored evidence") && (
-        <div className="rounded-2xl border border-bayou/30 bg-panel p-3">
-          <h3 className="text-sm font-semibold text-bayou">{t.needFromYou}</h3>
+        <div className="rounded-2xl border border-bayou/40 bg-bayou-soft/40 p-3">
+          <h3 className="text-sm font-semibold text-tide">{t.needFromYou}</h3>
           <p className="mt-1 text-sm leading-relaxed text-ink">{s.followUp[lang]}</p>
           <p className="mt-1 text-[11px] text-muted">{s.followUp.why}</p>
           <div className="mt-2">
             {sample
-              ? billPending && <button disabled={running} onClick={onBill} className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">💡 {t.billArrives}</button>
+              ? billPending && <button disabled={running} onClick={onBill} className="rounded-full bg-amber px-3 py-1.5 text-xs font-semibold text-night disabled:opacity-50">💡 {t.billArrives}</button>
               : <FilePicker lang={lang} onPick={onUpload} label={`📎 ${t.uploadIt}`} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white" />}
           </div>
         </div>
@@ -158,13 +166,13 @@ function NextSteps({ s, events, running, lang, sample, billPending, approving, a
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 text-sm font-semibold">{task.title}</div>
                 {task.status === "blocked" && <span className="shrink-0 rounded-full bg-clay-soft px-2 py-0.5 text-[11px] text-clay">{t.blocked}</span>}
-                {task.status === "ready" && <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] text-bayou">{t.ready}</span>}
+                {task.status === "ready" && <span className="shrink-0 rounded-full bg-bayou-soft px-2 py-0.5 text-[11px] text-tide">{t.ready}</span>}
               </div>
               <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{task.detail}</p>
               {task.status === "needs_approval" && (task.approved
-                ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-white">{t.approved}</span>
+                ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-night">{t.approved}</span>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}
-                  className="mt-2 rounded-full border border-bayou px-3 py-1 text-xs font-semibold text-bayou hover:bg-bayou hover:text-white disabled:opacity-50">{t.approve}</button>)}
+                  className="mt-2 rounded-full border border-tide/60 px-3 py-1 text-xs font-semibold text-tide hover:bg-tide hover:text-night disabled:opacity-50">{t.approve}</button>)}
             </li>
           ))}</ol>
         </div>

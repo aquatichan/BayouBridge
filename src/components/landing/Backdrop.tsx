@@ -19,7 +19,7 @@ export default function Backdrop() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(120%_80%_at_50%_0%,#0d3156_0%,#06142b_60%)]">
       {ready && !reduced && (
-        <Aurora colorStops={["#0b2a4a", "#2f7bb8", "#7dd3fc"]} amplitude={0.9} blend={0.55} speed={0.5} brightness={0.7}
+        <Aurora colorStops={["oklch(0.78 0.17 25)", "oklch(0.86 0.16 95)", "oklch(0.8 0.17 150)", "oklch(0.78 0.15 235)", "oklch(0.72 0.18 300)"]} amplitude={0.9} blend={0.55} speed={0.5} brightness={0.7}
           opacity={0.85} mouseInteraction={false} dpr={1} className="h-full w-full" />
       )}
     </div>

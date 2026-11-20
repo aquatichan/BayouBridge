@@ -10,21 +10,21 @@ import { STRINGS, type Lang } from "./i18n";
 export function Card({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-30 grid place-items-center overflow-y-auto bg-gradient-to-b from-bg/20 via-bg/50 to-bg/80 p-4">
-      <div className={`fade-up my-auto w-full ${wide ? "max-w-xl" : "max-w-lg"} rounded-3xl border border-white/70 bg-panel/95 p-5 shadow-xl backdrop-blur md:p-7`}>
+      <div className={`fade-up my-auto w-full ${wide ? "max-w-xl" : "max-w-lg"} rounded-3xl border border-tide/20 bg-panel/80 p-5 shadow-[0_0_0_1px_rgb(125_211_252/0.06),0_30px_80px_rgb(0_0_0/0.55),0_0_60px_rgb(47_143_216/0.15)] backdrop-blur-xl md:p-7`}>
         {children}
       </div>
     </div>
   );
 }
 
-const primary = "rounded-full bg-bayou px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b3a39] disabled:opacity-50";
-const secondary = "rounded-full border border-line bg-panel px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-bg";
+const primary = "rounded-full bg-bayou px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 shadow-[0_0_24px_rgb(47_143_216/0.35)] disabled:opacity-50";
+const secondary = "rounded-full border border-line bg-panel px-5 py-2.5 text-sm font-semibold text-ink transition hover:border-tide/50";
 
 export function Welcome({ lang, onStart, onSample, busy }: { lang: Lang; onStart: () => void; onSample: () => void; busy: boolean }) {
   const t = STRINGS[lang];
   return (
     <Card>
-      <p className="font-serif text-lg italic text-bayou">{t.tagline}</p>
+      <p className="font-serif text-lg italic text-tide">{t.tagline}</p>
       <h1 className="mt-1 text-2xl font-bold leading-tight text-ink md:text-3xl">{t.welcomeTitle}</h1>
       <p className="mt-3 text-sm leading-relaxed text-muted">{t.welcomeBody}</p>
       <div className="mt-5 flex flex-wrap gap-2">
@@ -44,10 +44,10 @@ export function Consent({ lang, onAgree, onBack }: { lang: Lang; onAgree: () => 
     <Card>
       <h2 className="text-xl font-bold text-ink">{t.consentTitle}</h2>
       <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink">
-        {t.consent.map((c) => <li key={c} className="flex gap-2"><span aria-hidden className="mt-0.5 text-bayou">●</span><span>{c}</span></li>)}
+        {t.consent.map((c) => <li key={c} className="flex gap-2"><span aria-hidden className="mt-0.5 text-tide">●</span><span>{c}</span></li>)}
       </ul>
       <label className="mt-4 flex cursor-pointer items-center gap-2 rounded-xl bg-bayou-soft p-3 text-sm font-semibold text-ink">
-        <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} className="h-4 w-4 accent-[#0f4c4a]" />
+        <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} className="h-4 w-4 accent-[#7dd3fc]" />
         {t.agree}
       </label>
       <div className="mt-4 flex justify-between gap-2">
@@ -71,13 +71,13 @@ export function Home({ lang, onSubmit, onBack, busy, error }: {
         <label className="block text-sm font-semibold text-ink">
           {t.address}
           <input required minLength={5} maxLength={200} value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="street-address"
-            className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-base font-normal outline-none focus:border-bayou" />
+            className="mt-1 w-full rounded-xl border border-line bg-bg/70 px-3 text-ink placeholder:text-muted/70 py-2.5 text-base font-normal outline-none focus:border-bayou" />
           <span className="mt-1 block text-xs font-normal text-muted">{t.addressHint}</span>
         </label>
         <label className="block text-sm font-semibold text-ink">
           {t.name}
           <input maxLength={80} value={name} onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-base font-normal outline-none focus:border-bayou" />
+            className="mt-1 w-full rounded-xl border border-line bg-bg/70 px-3 text-ink placeholder:text-muted/70 py-2.5 text-base font-normal outline-none focus:border-bayou" />
         </label>
         {error && <p role="alert" className="rounded-xl bg-clay-soft p-2 text-xs text-clay">{error}</p>}
         <div className="flex justify-between gap-2 pt-1">
@@ -199,7 +199,7 @@ export function Upload({ lang, claudeOn, onSubmit, busy, error }: {
       <label className="mt-4 block text-sm font-semibold text-ink">
         {t.yourWords}
         <textarea value={words} onChange={(e) => setWords(e.target.value)} rows={4} maxLength={4000} placeholder={t.yourWordsHint}
-          className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-base font-normal outline-none focus:border-bayou" />
+          className="mt-1 w-full rounded-xl border border-line bg-bg/70 px-3 text-ink placeholder:text-muted/70 py-2 text-base font-normal outline-none focus:border-bayou" />
       </label>
       {dictation.supported && (
         <button type="button" onClick={dictation.toggle}

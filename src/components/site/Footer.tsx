@@ -20,7 +20,7 @@ const STRINGS = {
       "Your papers are kept for 2 hours at most, then deleted.",
     ],
     rights: "BayouBridge · Built for Teen Hacks Houston",
-    made: "Made in Houston",
+    made: "Aaron Qin, Miheer Parasnis, Reyansh Maheshwari · Made in Houston",
   },
   es: {
     kicker: "Cuando usted esté listo",
@@ -35,7 +35,7 @@ const STRINGS = {
       "Sus papeles se guardan 2 horas como máximo y luego se borran.",
     ],
     rights: "BayouBridge · Hecho para Teen Hacks Houston",
-    made: "Hecho en Houston",
+    made: "Aaron Qin, Miheer Parasnis, Reyansh Maheshwari · Hecho en Houston",
   },
 } as const;
 
@@ -70,7 +70,7 @@ export default function Footer({ lang }: { lang: Lang }) {
         </div>
       </div>
       <div aria-hidden className="mt-20 overflow-hidden">
-        <p className="select-none whitespace-nowrap font-serif text-[min(15rem,calc((100vw-2*(var(--frame)+var(--gutter)))/6))] font-extrabold leading-[0.85] tracking-[-0.045em] text-cream/[0.07]">BayouBridge</p>
+        <p className="select-none whitespace-nowrap font-serif text-[min(15rem,calc((100vw-2*(var(--frame)+var(--gutter)))/6))] font-extrabold leading-none tracking-[-0.06em] text-cream/[0.07]">BayouBridge</p>
       </div>
       <div className="mt-6 flex flex-col justify-between gap-2 border-t border-white/10 pt-5 text-sm text-cream/50 sm:flex-row">
         <span>{t.rights}</span>
