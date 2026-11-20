@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { ActivityEvent, CaseDocument, CaseState, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
+import { extractionLabel, extractionTooltip } from "@/lib/labels";
+import type { ActivityEvent, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { FilePicker } from "./Onboarding";
 import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
@@ -21,7 +22,9 @@ function fmt(iso: string, lang: Lang) {
 
 export default function CasePanel(props: {
   s: CaseState | null; events: ActivityEvent[]; tasks: Record<string, TaskUpdate>; running: boolean; lang: Lang;
-  outbox: OutboxItem[]; sample: boolean; billPending: boolean; approving: string | null; approveError: string | null;
+  outbox: OutboxItem[]; sample: boolean; billPending: boolean;
+  /** Which extractor actually read the documents in the last run (null until a run finishes). */
+  mode: ExtractionSummary | null; approving: string | null; approveError: string | null;
   onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void; onBill: () => void;
   /** Desktop only: fold the sidebar away. */
   onCollapse?: () => void;
@@ -78,6 +81,11 @@ export default function CasePanel(props: {
 
         {tab === "docs" && (
           <>
+            {props.mode && !running && (
+              <p className="rounded-xl bg-bg px-3 py-2 text-[11px] leading-relaxed text-muted">
+                <b className="text-ink">{t.extraction} {tr(extractionLabel(props.mode), lang)}.</b> {tr(extractionTooltip(props.mode), lang)}
+              </p>
+            )}
             <ul className="space-y-1.5">{docs.map((d) => <Doc key={d.id} d={d} s={s} lang={lang} read={read.has(d.id)} working={props.tasks[`extract:${d.id}`]?.status === "started"} />)}</ul>
             {!props.sample && s && <FilePicker lang={lang} onPick={props.onUpload} label={`＋ ${t.addMore}`} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-bg" />}
           </>
