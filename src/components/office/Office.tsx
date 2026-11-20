@@ -1,5 +1,7 @@
 "use client";
 
+import { tr } from "@/lib/es";
+
 import dynamic from "next/dynamic";
 import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { MASCOTS, STATIONS, mascotDef, type MascotId, type OfficeDirector, type StationId } from "@/lib/office/director";
@@ -24,8 +26,10 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export default function Office({
   director, className = "", hud = true, followClass = "left-3 top-3", chipsClass = "inset-x-2 bottom-2", rightInset = 0,
-  follow, interactive = true,
+  follow, interactive = true, lang = "en",
 }: {
+  /** Language of the overlay text. */
+  lang?: "en" | "es";
   director: OfficeDirector; className?: string; hud?: boolean;
   /** Where the "Following" card and the agent chips sit (Tailwind position classes). */
   followClass?: string; chipsClass?: string;
@@ -36,6 +40,8 @@ export default function Office({
   /** false: no drag-to-look or wheel zoom, so the office never captures page scrolling. */
   interactive?: boolean;
 }) {
+  const es = lang === "es";
+  const L = (en: string) => (es ? OFFICE_ES[en] ?? tr(en, "es") : en);
   const snap = useSyncExternalStore(director.subscribe, director.getSnapshot, director.getSnapshot);
   const [chosen, setMode] = useState<FollowMode>("auto");
   const mode = follow ?? chosen;
@@ -89,7 +95,7 @@ export default function Office({
         {(Object.keys(STATIONS) as StationId[]).map((id) => (
           <div key={id} ref={label(`s:${id}`)} style={{ opacity: 0 }}
             className={`absolute left-0 top-0 whitespace-nowrap rounded-md px-1.5 py-0.5 font-medium will-change-transform ${focus.has(id) ? "border border-tide/60 bg-night/85 text-[11px] text-tide shadow-[0_0_16px_rgb(125_211_252/0.45)]" : "border border-tide/15 bg-night/55 text-[10px] text-muted"}`}>
-            {STATIONS[id].name}
+            {L(STATIONS[id].name)}
           </div>
         ))}
         {MASCOTS.map((m) => {
@@ -98,8 +104,8 @@ export default function Office({
           return (
             <div key={m.id} ref={label(`m:${m.id}`)} style={{ opacity: 0, ...(on ? { background: m.color } : {}) }}
               className={`absolute left-0 top-0 max-w-[240px] truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm will-change-transform ${on ? "border-transparent text-night shadow-[0_0_18px_currentColor]" : "border-tide/20 bg-night/75 text-ink backdrop-blur-sm"}`}>
-              {m.name}
-              {s?.label && <span className={`ml-1 font-normal ${on ? "text-night/75" : "text-muted"}`}>· {s.label}</span>}
+              {L(m.name)}
+              {s?.label && <span className={`ml-1 font-normal ${on ? "text-night/75" : "text-muted"}`}>· {L(s.label)}</span>}
             </div>
           );
         })}
@@ -112,42 +118,42 @@ export default function Office({
               <>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: def.color }} />
-                  <span className="text-[11px] text-muted">{mode === "auto" ? "Watching the busiest helper" : "Watching"}</span>
+                  <span className="text-[11px] text-muted">{L(mode === "auto" ? "Watching the busiest helper" : "Watching")}</span>
                 </div>
-                <div className="mt-0.5 text-sm font-bold text-ink">{def.name}</div>
+                <div className="mt-0.5 text-sm font-bold text-ink">{L(def.name)}</div>
                 <div className="text-muted">
-                  {f.phase === "walking" && f.station ? <>Heading to the <b className="text-ink">{f.station}</b>{f.label ? ` · ${f.label}` : ""}</>
-                    : f.phase === "working" ? <>{f.label} <span className="text-muted">at the {f.station}</span></>
-                    : def.role}
+                  {f.phase === "walking" && f.station ? <>{L("Heading to")} <b className="text-ink">{L(f.station)}</b>{f.label ? ` · ${L(f.label)}` : ""}</>
+                    : f.phase === "working" ? <>{L(f.label ?? "")} <span className="text-muted">· {L(f.station ?? "")}</span></>
+                    : L(def.role)}
                 </div>
-                {f.queued > 0 && <div className="mt-0.5 hidden text-[11px] text-amber sm:block">{f.queued} more task{f.queued > 1 ? "s" : ""} lined up</div>}
+                {f.queued > 0 && <div className="mt-0.5 hidden text-[11px] text-amber sm:block">{es ? `${f.queued} tarea${f.queued > 1 ? "s" : ""} más en fila` : `${f.queued} more task${f.queued > 1 ? "s" : ""} lined up`}</div>}
               </>
             ) : (
               <>
-                <div className="text-[11px] text-muted">The office</div>
-                <div className="text-ink">{snap.mascots.some((m) => m.phase !== "idle") ? "Your helpers are at work. Tap one to watch." : "Everyone is at their desk."}</div>
+                <div className="text-[11px] text-muted">{L("The office")}</div>
+                <div className="text-ink">{L(snap.mascots.some((m) => m.phase !== "idle") ? "Your helpers are at work. Tap one to watch." : "Everyone is at their desk.")}</div>
               </>
             )}
           </div>
 
           <div className={`absolute ${chipsClass} z-40 flex flex-wrap items-center justify-center gap-1`}>
-            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-tide text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}>Auto</button>
+            <button onClick={() => setMode("auto")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "auto" ? "bg-tide text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}>{L("Auto")}</button>
             {MASCOTS.map((m) => {
               const s = snap.mascots.find((x) => x.id === m.id)!;
               const on = mode === m.id;
               return (
-                <button key={m.id} onClick={() => setMode(m.id)} title={`${m.name}: ${m.role}`}
+                <button key={m.id} onClick={() => setMode(m.id)} title={`${L(m.name)}: ${L(m.role)}`}
                   className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${on ? "text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}
                   style={on ? { background: m.color } : undefined}>
                   <span className="h-2 w-2 rounded-full" style={{ background: on ? "#06142b" : m.color, boxShadow: on ? undefined : `0 0 8px ${m.color}` }} />
-                  {m.name}
+                  {L(m.name)}
                   <span className="hidden h-1 w-6 overflow-hidden rounded-full bg-white/10 sm:inline-block" aria-hidden>
                     <span className="block h-full rounded-full" style={{ width: `${(s.score / maxScore) * 100}%`, background: on ? "#06142b" : m.color }} />
                   </span>
                 </button>
               );
             })}
-            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-tide text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}>Whole office</button>
+            <button onClick={() => setMode("overview")} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm sm:px-2.5 sm:py-1 sm:text-[11px] ${mode === "overview" ? "bg-tide text-night" : "border border-tide/15 bg-night/70 text-ink backdrop-blur-md"}`}>{L("Whole office")}</button>
           </div>
         </>
       )}
@@ -155,3 +161,19 @@ export default function Office({
   );
 }
 
+
+/** The office overlay in Spanish. Task labels fall back to the shared phrasebook. */
+const OFFICE_ES: Record<string, string> = {
+  Organizer: "Organizador", "Paper Reader": "Lector de papeles", "AI Reader": "Lector con IA", "Help Finder": "Buscador de ayuda", Gatekeeper: "Guardián",
+  "Keeps the case moving and writes the plan": "Mantiene el caso en marcha y escribe el plan",
+  "Reads your papers and checks the details": "Lee sus papeles y revisa los detalles",
+  "Reads photos and letters with AI": "Lee fotos y cartas con IA",
+  "Finds help you may qualify for and asks what's missing": "Busca ayuda para la que podría calificar y pregunta qué falta",
+  "Prepares drafts and holds them until you say OK": "Prepara borradores y los guarda hasta que usted dé el visto bueno",
+  "Planning desk": "Escritorio de planes", "Case map": "Mapa del caso", "Case board": "Tablero del caso", "Help library": "Biblioteca de ayuda",
+  Phone: "Teléfono", "Drafts table": "Mesa de borradores", "Your OK gate": "Control de su aprobación", "Practice outbox": "Bandeja de práctica",
+  "AI reading desk": "Mesa de lectura con IA", "Reading desk": "Mesa de lectura", "Mail tray": "Bandeja de correo", Records: "Archivo",
+  "Watching the busiest helper": "Mirando al ayudante más ocupado", Watching: "Mirando", "Heading to": "Va hacia",
+  "The office": "La oficina", "Your helpers are at work. Tap one to watch.": "Sus ayudantes están trabajando. Toque uno para verlo.",
+  "Everyone is at their desk.": "Todos están en su escritorio.", Auto: "Auto", "Whole office": "Toda la oficina",
+};

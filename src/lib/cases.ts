@@ -184,8 +184,8 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
   if (unread.length) {
     const names = unread.map((d) => d.filename).join(", ");
     state.warnings.push(claudeConfigured()
-      ? `We couldn't read ${names}. Try a clearer photo, or type what it says in "your own words".`
-      : `Our photo reader is switched off right now, so ${names} ${unread.length === 1 ? "wasn't" : "weren't"} read. You can type what ${unread.length === 1 ? "it says" : "they say"} in "your own words" instead.`);
+      ? `We couldn't read ${names}. Try a clearer photo, or type what it says with "Type a document".`
+      : `Our photo reader is switched off right now, so ${names} ${unread.length === 1 ? "wasn't" : "weren't"} read. You can type what ${unread.length === 1 ? "it says" : "they say"} with "Type a document" instead.`);
   }
   return saveRun(state);
 }

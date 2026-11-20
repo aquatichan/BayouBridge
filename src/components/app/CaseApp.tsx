@@ -292,7 +292,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     <div className="min-h-screen md:h-screen md:overflow-hidden" style={{ ["--side" as string]: `${side}px` }}>
       {/* The office. Full screen on desktop; the top half of the screen on phones. */}
       <Office
-        director={director}
+        director={director} lang={lang}
         hud={inOffice}
         className="relative h-[56vh] md:fixed md:inset-0 md:h-auto"
         followClass="left-3 top-16 md:left-4 md:top-20"

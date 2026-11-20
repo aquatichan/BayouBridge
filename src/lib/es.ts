@@ -72,6 +72,28 @@ const PHRASES: Record<string, string> = {
   "FEMA denied the application": "FEMA negó la solicitud",
   "letter from FEMA": "carta de FEMA",
 
+  // Household-voice plan steps
+  "Send FEMA your appeal, with proof that you lived in the home.": "Enviar a FEMA su apelación, con prueba de que vivía en la casa.",
+  "Send your repair estimate and damage photos to your insurance company.": "Enviar su presupuesto de reparación y las fotos de los daños a su compañía de seguros.",
+  "Ask 2-1-1 Texas to connect you with a food pantry near you.": "Pedir a 2-1-1 Texas que le conecte con un banco de comida cercano.",
+  // Agents and what they did (the activity line)
+  Coordinator: "Coordinador", "Evidence Agent": "Agente de documentos", "Recovery-Match Agent": "Agente de programas",
+  "Packet Agent": "Agente de paquetes", "Follow-up Agent": "Agente de seguimiento", "Safety Agent": "Agente de seguridad",
+  "Started case run": "Empezó a revisar el caso", "Fell back to rules": "Pasó al motor de reglas", "Claude skipped": "Dejó de usar Claude",
+  "Verified proof of occupancy": "Comprobó la residencia", "Occupancy not verified": "No pudo comprobar la residencia",
+  "Resolved people": "Identificó a las personas", "Built needs list": "Hizo la lista de necesidades", "Checked for conflicts": "Buscó datos que no coinciden",
+  "Matched recovery pathways": "Encontró programas", "Scored evidence": "Revisó los documentos", "Built recovery plan": "Escribió el plan",
+  "Applied approval gates": "Puso los controles de aprobación", "Updated recovery graph": "Actualizó el mapa del caso",
+  "Approval recorded": "Guardó su aprobación", "Queued to sandbox outbox": "Lo puso en la bandeja de práctica", "Conflict resolved": "Guardó su respuesta",
+  "Step failed": "Un paso falló", "Step skipped": "Se omitió un paso",
+  "Sorting the new papers": "Ordenar los papeles nuevos", "Taking over this paper": "Encargarse de este papel", "Opening the gate": "Abrir el control",
+  "Putting the draft in the practice outbox": "Poner el borrador en la bandeja de práctica",
+  // Why a program matched
+  "FEMA letter says ineligible for insufficient information": "La carta de FEMA dice que no califica por información insuficiente",
+  "Wind damage to roof documented in photos and estimate": "Daño del viento al techo en las fotos y el presupuesto",
+  "Repair estimate is larger than what insurance is likely to pay": "La reparación cuesta más de lo que el seguro probablemente pague",
+  "Household lost refrigerated food during the outage": "La familia perdió comida refrigerada durante el apagón",
+
   // Document titles (the sample households)
   "Doctor's critical care form": "Formulario de cuidado crítico del médico",
   "Driver license": "Licencia de conducir",
@@ -297,6 +319,13 @@ const PATTERNS: [RegExp, (...m: string[]) => string | undefined][] = [
     const ta = spanish(a), tb = spanish(b);
     return ta && tb ? `${ta}: ${tb}` : undefined;
   }],
+  [/^Unblocks (\d+) pathways?\. You mentioned you have it \((.+)\)\.$/, (n, h) => `Desbloquea ${n} programa${n === "1" ? "" : "s"}. Usted mencionó que lo tiene (${tr(h, "es")}).`],
+  [/^We couldn't read (.+)\. Try a clearer photo, or type what it says with "Type a document"\.$/, (f) => `No pudimos leer ${f}. Intente con una foto más clara o escriba lo que dice con "Escribir un documento".`],
+  [/^Our photo reader is switched off right now, so (.+) (?:wasn't|weren't) read\. You can type what (?:it says|they say) with "Type a document" instead\.$/, (f) => `Nuestro lector de fotos está apagado ahora, así que no se leyó ${f}. Puede escribir lo que dice con "Escribir un documento".`],
+  [/^Read (.+)$/, (f) => `Leyó ${f}`], [/^Reused (.+)$/, (f) => `Reusó ${f}`],
+  [/^Drafted packet for (.+)$/, (n) => `Preparó el paquete para ${tr(n, "es")}`], [/^Drafting papers for (.+)$/, (n) => `Preparar papeles para ${tr(n, "es")}`],
+  [/^Back to the (.+)$/, (st) => `De vuelta a: ${st}`],
+  [/^Household member uses (?:an? )?(.+)$/, (e) => `Un miembro del hogar usa ${EQUIPMENT[e.toLowerCase()]?.[1] ?? e}`],
   // Warnings from the coordinator
   [/^(.+) failed, so (.+)\.$/, (l, note) => `${tr(l, "es")}: falló, así que ${tr(note, "es")}.`],
   [/^(.+) failed \((.+)\)\.$/, (l, msg) => `${tr(l, "es")}: falló (${msg}).`],
