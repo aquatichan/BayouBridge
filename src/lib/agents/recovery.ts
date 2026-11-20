@@ -1,5 +1,5 @@
 import { EVIDENCE_LABELS, programs, type ProgramRule } from "@/data/resources";
-import { equipmentUser, findEquipment } from "@/lib/equipment";
+import { equipmentUser, findEquipment, ROLES } from "@/lib/equipment";
 import type {
   CaseDocument, Conflict, DocKind, EvidenceType, ExtractionResult, Fact, FollowUpQuestion,
   GraphEdge, GraphNode, Need, NeedKey, Person, PlanTask, ProgramMatch,
@@ -54,7 +54,7 @@ const equipmentOf = (need: Fact) =>
   ?? (need.value.replace(/\s*\(.*\)$/, "").replace(/^.*\buses (?:an? )?/i, "").trim() || "Medical equipment");
 /** "Oxygen concentrator" → "oxygen concentrator", but "CPAP machine" stays as is. */
 const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
-const EQUIPMENT_SHORT: Record<string, string> = { "oxygen concentrator": "oxygen" };
+const EQUIPMENT_SHORT: Record<string, string> = { "oxygen concentrator": "oxygen", "oxygen equipment": "oxygen" };
 
 /** The relative named in the same sentence as a medical-equipment need, if any. */
 function medicalFactFor(person: Fact, facts: Fact[]): Fact | undefined {
@@ -80,7 +80,7 @@ export function caseContext(address: string, ex: ExtractionResult[], approver: C
   };
 }
 
-const RELATION: Record<string, string> = { "role:mother": "Mother", "role:son": "Son" };
+const RELATION: Record<string, string> = Object.fromEntries(ROLES.map((r) => [`role:${r}`, r[0].toUpperCase() + r.slice(1)]));
 const PRONOUN: Record<string, string> = {
   mother: "Her", wife: "Her", daughter: "Her", grandmother: "Her", son: "His", husband: "His", father: "His", grandfather: "His",
 };
@@ -137,6 +137,8 @@ const NEED_META: Record<NeedKey, { label: string; urgency: Need["urgency"] }> = 
 };
 
 const ROOMS = ["living room", "kitchen", "bedroom", "bathroom", "garage"];
+/** Spanish names for the same rooms, so "entró agua a la sala" is living-room water damage. */
+const ROOMS_ES: [RegExp, string][] = [[/\bsala\b/, "living room"], [/\bcocina\b/, "kitchen"], [/\b(?:cuarto|rec[aá]mara|dormitorio|habitaci[oó]n)\b/, "bedroom"], [/\bba[ñn]o\b/, "bathroom"], [/\bgaraje\b|\bcochera\b/, "garage"]];
 
 export function deriveNeeds(ex: ExtractionResult[], docs: CaseDocument[] = []): Need[] {
   const map = new Map<NeedKey, string[]>();
@@ -158,9 +160,11 @@ export function deriveNeeds(ex: ExtractionResult[], docs: CaseDocument[] = []): 
     if (key === "food_loss") return outage ? `Food lost in ${outage}` : "Food lost in power outage";
     if (key === "roof_damage" && docs.length) return /\btarp/.test(text) ? NEED_META.roof_damage.label : "Roof wind damage";
     if (key === "interior_water_damage" && docs.length) {
-      const room = ROOMS.find((r) => text.includes(r));
+      const room = ROOMS.find((r) => text.includes(r)) ?? ROOMS_ES.find(([re]) => re.test(text))?.[1];
       return room ? `${room[0].toUpperCase()}${room.slice(1)} water damage` : "Interior water damage";
     }
+    // Only a FEMA letter that says so names the reason; a household's "FEMA denied us" doesn't.
+    if (key === "fema_denial" && !facts.some((f) => f.normalized === "missing:proof_of_occupancy")) return "FEMA denied the application";
     return NEED_META[key].label;
   };
   return [...map.entries()]
@@ -257,8 +261,11 @@ export function matchPrograms(
   const signals = caseSignals(ex);
   const have = (t: EvidenceType) => ex.filter((e) => e.evidenceTypes.includes(t)).map((e) => e.docId);
   const needKeys = new Set(needs.map((n) => n.key));
+  const tenure = tenureOf(facts, docs);
+  const uninsured = facts.some((f) => f.normalized === "absent:insurance_policy")
+    && !have("insurance_correspondence").length && !have("insurance_policy").length;
 
-  return programs.map((p: ProgramRule) => {
+  return programs.filter((p) => !(p.ownersOnly && tenure === "renter") && !(p.needsInsurance && uninsured)).map((p: ProgramRule) => {
     const firing = p.triggers.filter((t) => (t.need ? needKeys.has(t.need as NeedKey) : t.fact ? signals[t.fact] : false));
     const evidence = p.requires.map((r) => {
       const satisfiedBy = have(r.type);
@@ -301,6 +308,13 @@ export function matchPrograms(
     .sort((a, b) => (a.deadline?.date ?? "9999").localeCompare(b.deadline?.date ?? "9999"));
 }
 
+/** "renter" or "owner" when the documents say so (a lease on file counts as renting); undefined when unknown or mixed. */
+export function tenureOf(facts: Fact[], docs: CaseDocument[]): "renter" | "owner" | undefined {
+  const said = new Set(facts.filter((f) => f.type === "tenure").map((f) => f.normalized));
+  if (docs.some((d) => d.kind === "lease")) said.add("renter");
+  return said.size === 1 ? (said.has("renter") ? "renter" : said.has("owner") ? "owner" : undefined) : undefined;
+}
+
 // ── Gap analysis ────────────────────────────────────────────────────────────
 
 /** Share of required evidence (across matched programs, de-duplicated) that is on file. */
@@ -336,10 +350,36 @@ function questionFor(type: EvidenceType, ctx: CaseContext, hint?: string): { en:
       es: `¿Quién es el médico de ${first ?? (rel && RELATIVE_ES[rel] ? `su ${RELATIVE_ES[rel]}` : "su familiar")}? Le podemos enviar el formulario para registrar su casa como cliente de cuidado crítico.`,
     };
   }
+  if (type === "fema_determination" && hint) {
+    return {
+      en: "You mentioned FEMA sent you a letter. Can you take a photo of it? The appeal starts from what it says and the date on it.",
+      es: "Usted mencionó que FEMA le envió una carta. ¿Le puede tomar una foto? La apelación parte de lo que dice y de su fecha.",
+    };
+  }
   return QUESTIONS[type];
 }
 
 const QUESTIONS: Partial<Record<EvidenceType, { en: string; es: string }>> = {
+  damage_photo: {
+    en: "Can you take a few photos of the damage? Wide shots of each room and close-ups of the roof, ceiling and floors help most.",
+    es: "¿Puede tomar unas fotos de los daños? Sirven más las fotos de cada cuarto completo y de cerca del techo, el cielo raso y los pisos.",
+  },
+  fema_determination: {
+    en: "Do you have the letter FEMA sent you about your application? A photo of every page is enough.",
+    es: "¿Tiene la carta que FEMA le envió sobre su solicitud? Basta con una foto de cada página.",
+  },
+  repair_estimate: {
+    en: "Has a contractor given you a written repair estimate? A photo of it is enough.",
+    es: "¿Algún contratista le dio un presupuesto de reparación por escrito? Basta con una foto.",
+  },
+  insurance_correspondence: {
+    en: "Have you received any letter or email from your insurance company about this claim?",
+    es: "¿Ha recibido alguna carta o correo de su compañía de seguros sobre este reclamo?",
+  },
+  loss_statement: {
+    en: "Can you tell us in your own words what you lost, like food, clothes or furniture?",
+    es: "¿Nos puede contar con sus propias palabras qué perdió, como comida, ropa o muebles?",
+  },
   insurance_policy: {
     en: "Do you have the first page of your homeowners policy (the declarations page)? It shows what is covered.",
     es: "¿Tiene la primera página de su póliza de seguro de vivienda (la página de declaraciones)? Muestra lo que está cubierto.",

@@ -1,3 +1,4 @@
+import { EQUIPMENT_RE, findEquipment, KIN_WORDS, relativeOf } from "@/lib/equipment";
 import { OCCUPANCY_KINDS, type CaseDocument, type EvidenceType, type ExtractionResult, type Fact, type FactType } from "@/lib/types";
 
 // Evidence Agent — rules-based extractor.
@@ -21,11 +22,6 @@ export function parseDate(s: string): string | undefined {
   return undefined;
 }
 
-/** Powered medical equipment, in either language → its English name. */
-const EQUIPMENT: Record<string, string> = {
-  "concentrador de oxígeno": "Oxygen concentrator", "oxygen concentrator": "Oxygen concentrator",
-  cpap: "CPAP machine", nebulizador: "Nebulizer", nebulizer: "Nebulizer",
-};
 const MONTHS_ES_EN: Record<string, string> = {
   enero: "January", febrero: "February", marzo: "March", abril: "April", mayo: "May", junio: "June", julio: "July",
   agosto: "August", septiembre: "September", setiembre: "September", octubre: "October", noviembre: "November", diciembre: "December",
@@ -43,6 +39,59 @@ function lineOf(text: string, idx: number): string {
   return text.slice(start, end === -1 ? undefined : end).trim();
 }
 
+/** The sentence (within its line) around `idx`. A typed story is often one long line. */
+function sentenceOf(text: string, idx: number): string {
+  const lineStart = text.lastIndexOf("\n", idx) + 1;
+  const line = lineOf(text, idx);
+  const offset = idx - lineStart - (text.slice(lineStart).length - text.slice(lineStart).trimStart().length);
+  let start = 0;
+  for (const m of line.matchAll(/[.!?]+\s+/g)) {
+    const end = (m.index ?? 0) + m[0].length;
+    if (end > offset) return line.slice(start, m.index! + m[0].trimEnd().length).trim();
+    start = end;
+  }
+  return line.slice(start).trim();
+}
+
+/** Free-form writing (a voice note, the household's own words, an unknown upload) rather than a form or letter. */
+const isNarrative = (doc: CaseDocument) => doc.kind === "voice_note" || doc.kind === "other" || doc.source === "statement";
+
+const MONTH_NAMES = "January|February|March|April|May|June|July|August|September|October|November|December";
+const MONTH_ABBR: Record<string, string> = { jan: "january", feb: "february", mar: "march", apr: "april", jun: "june", jul: "july", aug: "august", sep: "september", sept: "september", oct: "october", nov: "november", dec: "december" };
+const MESES = "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre";
+
+/**
+ * A date as people write it in a story: "October 9, 2026", "Oct. 9th", "9 de octubre (de 2026)", "10/9/2026".
+ * Without a year, it is the most recent such date on or before the day the document arrived.
+ */
+export function storyDate(s: string, receivedAt: string): { text: string; iso: string } | undefined {
+  const iso = (y: number | undefined, mo: number, d: number) => {
+    if (!mo || mo > 12 || !d || d > 31) return undefined;
+    const [ry, rm, rd] = receivedAt.split("-").map(Number);
+    const year = y ?? (mo * 100 + d > rm * 100 + rd ? ry - 1 : ry);
+    return `${year}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  };
+  const en = s.match(new RegExp(`\\b(${MONTH_NAMES}|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?`, "i"));
+  if (en) {
+    const name = en[1].toLowerCase();
+    const mo = MONTHS[MONTH_ABBR[name] ?? name];
+    const v = iso(en[3] ? Number(en[3]) : undefined, mo, Number(en[2]));
+    if (v) return { text: en[0], iso: v };
+  }
+  const es = s.match(new RegExp(`\\b(\\d{1,2})\\s+de\\s+(${MESES})(?:\\s+(?:de|del)\\s+(\\d{4}))?`, "i"));
+  if (es) {
+    const v = iso(es[3] ? Number(es[3]) : undefined, MONTHS[MONTHS_ES_EN[es[2].toLowerCase()].toLowerCase()], Number(es[1]));
+    if (v) return { text: es[0], iso: v };
+  }
+  const num = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if (num) {
+    const y = num[3] ? Number(num[3].length === 2 ? `20${num[3]}` : num[3]) : undefined;
+    const v = iso(y, Number(num[1]), Number(num[2])); // US order: month/day
+    if (v) return { text: num[0], iso: v };
+  }
+  return undefined;
+}
+
 export function extractWithRules(doc: CaseDocument): ExtractionResult {
   const t = doc.text;
   const facts: Fact[] = [];
@@ -50,9 +99,13 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   const add = (type: FactType, label: string, value: string, quote: string, normalized?: string, confidence = 0.9) =>
     facts.push({ id: `${doc.id}#f${++n}`, docId: doc.id, type, label, value, normalized, confidence, quote });
 
+  // Letters and forms quote the line a fact is on; free-form writing quotes the sentence,
+  // so facts about different people in one long paragraph keep their own quotes.
+  const narrative = isNarrative(doc);
+  const quoteAt = (idx: number) => (narrative ? sentenceOf(t, idx) : lineOf(t, idx));
   const find = (re: RegExp, fn: (m: RegExpMatchArray, quote: string) => void) => {
     for (const m of t.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"))) {
-      fn(m, lineOf(t, m.index ?? 0));
+      fn(m, quoteAt(m.index ?? 0));
     }
   };
 
@@ -119,13 +172,19 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
 
   // Needs (voice note, either language)
   // Powered medical equipment, and who uses it: the person named with an age in the same sentence.
-  find(/(concentrador de oxígeno|oxygen concentrator|cpap|nebulizador|nebulizer)/i, (m, q) => {
-    const who = q.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]+)(?: [A-ZÁÉÍÓÚ][a-záéíóúñ]+)?,? (?:tiene|is) (\d{1,3})\b/);
-    const equipment = EQUIPMENT[m[1].toLowerCase()] ?? m[1];
-    add("need", "Power-dependent medical equipment", `${equipment} (${who ? `${who[1]}, ${who[2]}` : "household member"})`, q, "medical_power", 0.9);
+  // Who: a person named with an age in the same sentence, else the relative named there ("my husband").
+  find(EQUIPMENT_RE, (m, q) => {
+    const s = sentenceOf(t, m.index ?? 0);
+    const who = s.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]+)(?: [A-ZÁÉÍÓÚ][a-záéíóúñ]+)?,? (?:tiene|is) (\d{1,3})\b/);
+    const kin = s.match(new RegExp(`(?<![\\p{L}])(?:my|our|mi|nuestr[oa])\\s+(${KIN_WORDS})(?![\\p{L}])`, "iu"))?.[1];
+    const equipment = findEquipment(m[0]) ?? m[0];
+    if (facts.some((f) => f.normalized === "medical_power" && f.quote === q && f.value.startsWith(equipment))) return; // "oxygen ... oxygen" in one sentence
+    add("need", "Power-dependent medical equipment", `${equipment} (${who ? `${who[1]}, ${who[2]}` : kin ? relativeOf(kin) : "household member"})`, q, "medical_power", 0.9);
   });
-  find(/(perdimos toda la comida|lost (?:all )?(?:our )?food)/i, (m, q) => {
-    const days = q.match(/\b(\d+|[a-z]+) (?:días|days)\b/i)?.[1]?.toLowerCase();
+  find(/(perdimos (?:toda )?la comida|se (?:nos )?(?:echó a perder|pudrió|dañó) (?:toda )?la comida|lost (?:all )?(?:of )?(?:our |the |my )?(?:food|groceries)|food (?:spoiled|went bad|rotted|was ruined)|spoiled food)/i, (m, q) => {
+    const outage = new RegExp(`(?:without|no|lost|sin|se fue la|nos quedamos sin)\\s+(?:power|electricity|luz|electricidad)[^.]{0,30}?\\b(\\d+|[a-z]+) (?:días|days)\\b|\\b(\\d+|[a-z]+) (?:días|days) (?:without|with no|sin) (?:power|electricity|luz|electricidad)`, "i");
+    const o = narrative ? t.match(outage) : null;
+    const days = (q.match(/\b(\d+|[a-z]+) (?:días|days)\b/i)?.[1] ?? o?.[1] ?? o?.[2])?.toLowerCase();
     const n = days ? Number(days) || NUMBER_WORDS[days] : undefined;
     add("need", "Food loss from outage", `Refrigerated food lost (${n ? `${n}-day outage` : "power outage"})`, q, "food_loss", 0.88);
   });
@@ -137,7 +196,80 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
     add("mentions_evidence", "Has a utility bill (not uploaded)", `${month ? `${month} ` : ""}electric bill in email`, q, "has:proof_of_occupancy", 0.82);
   });
 
+  if (narrative) storyFacts(doc, facts, add);
+
   return { docId: doc.id, evidenceTypes: classify(doc, facts), facts, method: "rules" };
+}
+
+type Add = (type: FactType, label: string, value: string, quote: string, normalized?: string, confidence?: number) => void;
+
+/**
+ * Facts from a household's own words, in English or Spanish: "The wind ripped shingles off
+ * our roof", "FEMA nos negó la ayuda", "We rent", "my daughter Maya is 8". Each fact quotes
+ * its sentence. Facts the letter-style rules above already found are not repeated.
+ */
+function storyFacts(doc: CaseDocument, facts: Fact[], add: Add) {
+  const text = doc.text;
+  const sentences = text.split("\n").flatMap((l) => l.split(/(?<=[.!?])\s+/)).map((x) => x.trim()).filter(Boolean);
+  const has = (normalized: string) => facts.some((f) => f.normalized === normalized);
+  // Names need real capitals, so these patterns are case-sensitive (with "i", \p{Lu} matches lowercase too).
+  const NAME = "\\p{Lu}[\\p{Ll}'’-]+(?:\\s\\p{Lu}[\\p{Ll}'’-]+)?";
+  const either = (alts: string) => alts.split("|").map((w) => `[${w[0].toUpperCase()}${w[0]}]${w.slice(1)}`).join("|");
+  const KIN = either(KIN_WORDS);
+  let tenure: string | undefined;
+
+  for (const s of sentences) {
+    // The applicant: "My name is Maria Lopez", "I'm Maria Lopez", "Me llamo María López"
+    const me = s.match(new RegExp(`(?:${either("my name is|i am|i'm|this is|me llamo|mi nombre es|soy")})\\s+(\\p{Lu}[\\p{Ll}'’-]+(?:[ -]\\p{Lu}[\\p{Ll}'’-]+)+)`, "u"));
+    if (me && !facts.some((f) => f.type === "person" && f.value === me[1])) add("person", "Person named", me[1], s, undefined, 0.85);
+
+    // Relatives with a name, and an age if given: "my daughter Maya is 8", "mi hijo Leo, de 5 años"
+    for (const k of s.matchAll(new RegExp(`(?<![\\p{L}])(?:${either("my|our|mi|mis|nuestro|nuestra|nuestros|nuestras")})\\s+(${KIN}),?\\s+(${NAME})(?:,?\\s+(?:who\\s+)?(?:is|tiene|de)\\s+(\\d{1,3}))?`, "gu"))) {
+      const role = relativeOf(k[1]);
+      const name = k[2];
+      if (!role || facts.some((f) => f.type === "person" && f.value.replace(/ \(age \d+\)/, "") === name)) continue;
+      add("person", `Household member (${role})`, k[3] ? `${name} (age ${k[3]})` : name, s, `role:${role}`, 0.8);
+    }
+
+    // When the storm hit
+    if (!facts.some((f) => f.type === "date_of_loss") && /hurricane|storm|tornado|flood|landfall|\bhit\b|wind|hurac[aá]n|tormenta|inundaci|peg[oó]|golpe[oó]|lleg[oó]/i.test(s)) {
+      const d = storyDate(s, doc.receivedAt);
+      if (d) add("date_of_loss", "Date of loss", d.text, s, d.iso, 0.8);
+    }
+
+    // Roof and interior water damage
+    if (!has("roof_damage") && /\broofs?\b|shingles?|\btecho|\btejas?\b/i.test(s)
+      && /rip|tore|torn|blew|blown|off\b|damag|hole|leak|missing|fell|collaps|tarp|se llev[oó]|da[ñn]|rot[oa]|hoyo|gotera|lona|se cay[oó]|arranc/i.test(s)) {
+      add("damage", "Roof damage", s.length > 120 ? `${s.slice(0, 117)}...` : s, s, "roof_damage", 0.75);
+    }
+    if (!has("interior_water_damage") && /\b(?:rain|water|flood(?:ed|ing)?|leak(?:ed|ing|s)?|soaked|wet|mold|mould)\b|agua|inund|moj|gotera|moho/i.test(s)
+      && /came in|got in|\binto\b|inside|kitchen|living room|bedroom|bathroom|floor|ceiling|carpet|drywall|walls?\b|entr[oó]|adentro|dentro|sala|cocina|cuarto|rec[aá]mara|ba[ñn]o|piso|techo|pared|alfombra/i.test(s)
+      && !/water bill|factura del agua/i.test(s)) {
+      add("damage", "Interior water damage", s.length > 120 ? `${s.slice(0, 117)}...` : s, s, "interior_water_damage", 0.75);
+    }
+
+    // FEMA said no
+    if (/\bFEMA\b/.test(s) && /denied|denial|rejected|turned (?:us |me )?down|not eligible|ineligible|neg[oó]|rechaz|no (?:califica|calificamos|calificaba|calific[aá]bamos)|no nos (?:dio|dieron|aprob)/i.test(s)) {
+      if (!has("fema_ineligible_info")) add("determination", "FEMA decision", "Denied (in the household's words)", s, "fema_ineligible_info", 0.75);
+      if (!has("missing:proof_of_occupancy") && /lived|live there|occupancy|proof of (?:address|residence)|comprobante|domicilio|viv[ií]amos/i.test(s)) {
+        add("determination", "Missing for FEMA", "Proof of occupancy", s, "missing:proof_of_occupancy", 0.7);
+      }
+      if (!has("has:fema_determination") && /letter|carta/i.test(s)) add("mentions_evidence", "Has a FEMA letter (not uploaded)", "FEMA letter", s, "has:fema_determination", 0.75);
+    }
+
+    // Rent or own
+    const renter = /\b(?:we|i)\s+(?:rent|are renting|lease)\b|\b(?:our|my|the)\s+(?:landlord|lease)\b|\brenters?\b|\btenants?\b|rentamos|alquilamos|\brento\b|\balquilo\b|(?:el|la|nuestro|nuestra|mi)\s+(?:due[ñn]o|due[ñn]a|casero|casera|arrendador)|inquilin/i.test(s);
+    const owner = /\b(?:we|i)\s+own\b|\bour own (?:home|house)\b|\bhomeowners?\b(?! insurance)|\bmortgage\b|\bwe bought\b|(?:somos|soy)\s+(?:los\s+)?(?:due[ñn]os?|propietari)|(?:la casa|el apartamento) es (?:nuestra|m[ií]a)|hipoteca/i.test(s);
+    if (renter !== owner && !tenure) {
+      tenure = renter ? "renter" : "owner";
+      add("tenure", "Housing", renter ? "Rents the home" : "Owns the home", s, tenure, 0.8);
+    }
+
+    // No insurance
+    if (!has("absent:insurance_policy") && /\b(?:no|don'?t|do not|didn'?t|did not)\s+(?:have\s+)?(?:any\s+)?(?:home\s+|renters?\s+|homeowners?\s+)?insurance\b|(?:no tenemos|no ten[ií]amos|sin)\s+(?:ning[uú]n\s+)?seguro/i.test(s)) {
+      add("mentions_evidence", "No insurance", "No insurance policy", s, "absent:insurance_policy", 0.8);
+    }
+  }
 }
 
 /** Household context that some evidence needs before it counts (see occupancyCheck). */

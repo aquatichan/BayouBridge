@@ -64,7 +64,9 @@ export type FactType =
   | "determination"
   | "exclusion"
   | "mentions_evidence"
-  | "billing_period";
+  | "billing_period"
+  /** Whether the household rents or owns the damaged home: normalized "renter" or "owner". */
+  | "tenure";
 
 export interface Fact {
   id: string;
