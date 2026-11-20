@@ -97,7 +97,6 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   const [approving, setApproving] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [claudeOn, setClaudeOn] = useState<boolean | null>(null);
-  const [, setCheer] = useState<string | undefined>();
   const [menu, setMenu] = useState(false);
   const director = useMemo(() => new OfficeDirector(), []);
   const eventsRef = useRef<ActivityEvent[]>([]);
@@ -135,16 +134,12 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
   /** Run the agents, live. `incremental` reuses what was already read; `newDocs` is how many papers land in the inbox. */
   const run = useCallback(async (id: string, opts: { incremental?: boolean; newDocs: number; addDocumentIds?: string[] }) => {
     const before = opts.incremental ? eventsRef.current : [];
-    const blockedBefore = new Set(state?.matches.filter((m) => m.blocked).map((m) => m.programId) ?? []);
-    setRunning(true); setError(null); setApproveError(null); setTasks({}); setCheer(undefined);
+    setRunning(true); setError(null); setApproveError(null); setTasks({});
     if (!opts.incremental) { setState(null); setEvents([]); setMode(null); }
     director.newRun(opts.newDocs);
     const body = { caseId: id, incremental: opts.incremental, addDocumentIds: opts.addDocumentIds };
     const finish = (final: CaseState, extraction: ExtractionSummary) => {
       setState(final); setMode(extraction); setEvents([...before, ...final.events]);
-      // A follow-up document just unblocked a pathway: Capi celebrates.
-      const unblocked = final.matches.find((m) => blockedBefore.has(m.programId) && !m.blocked);
-      if (opts.incremental && unblocked) setCheer(`${unblocked.name}: 100%`);
     };
     try {
       const streamed = await streamRun(body, {
@@ -167,7 +162,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     } finally {
       setRunning(false); setTasks({});
     }
-  }, [director, state]);
+  }, [director]);
 
   async function startSample() {
     setBusy(true); setError(null);
@@ -243,7 +238,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
     setMenu(false);
     if (caseId) await fetch(`/api/cases/${caseId}`, { method: "DELETE" }).catch(() => {});
     store.del(SESSION_KEY);
-    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null); setCheer(undefined);
+    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null);
     director.newRun(0);
     setStep("welcome");
     if (!sample) setNotice(t.deleted);
