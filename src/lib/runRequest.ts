@@ -1,4 +1,4 @@
-import { ALL_FOLLOW_UPS } from "@/data/demos";
+import { ALL_SAMPLE_DOCS } from "@/data/demos";
 import type { RunHooks } from "@/lib/agents/coordinator";
 import { runSessionCase } from "@/lib/cases";
 import { runDemoCase } from "@/lib/runDemo";
@@ -6,8 +6,8 @@ import { getCase } from "@/lib/store";
 import type { CaseState } from "@/lib/types";
 
 // The body accepted by POST /api/run and /api/run/stream:
-//   {}                                   the shared synthetic demo case (scripts)
-//   { addDocumentIds: ["doc-..."] }      the demo case plus allow-listed follow-up documents (a sample case: its own household's)
+//   {}                                   the shared synthetic demo case (scripts, tests), always on the rules engine
+//   { addDocumentIds: ["doc-..."] }      the demo case plus allow-listed follow-up documents (a sample case: any of its own household's papers)
 //   { caseId }                           a session case from the consumer flow
 //   { caseId, incremental: true }        the same, reusing documents read in its last run
 
@@ -25,7 +25,7 @@ export async function readRunRequest(req: Request): Promise<RunRequest | { error
   const ids = body.addDocumentIds;
   if (ids === undefined) return out;
   if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string")) return { error: "addDocumentIds must be an array of document ids", status: 400 };
-  const unknown = ids.filter((id) => !ALL_FOLLOW_UPS.some((d) => d.id === id));
+  const unknown = ids.filter((id) => !ALL_SAMPLE_DOCS.some((d) => d.id === id));
   if (unknown.length) return { error: `Unknown document id: ${unknown.join(", ")}`, status: 400 };
   out.addDocumentIds = ids;
   return out;
@@ -34,5 +34,5 @@ export async function readRunRequest(req: Request): Promise<RunRequest | { error
 export function runRequested(r: RunRequest, hooks: RunHooks = {}): Promise<CaseState> {
   return r.caseId
     ? runSessionCase(r.caseId, { incremental: r.incremental, addDocumentIds: r.addDocumentIds, ...hooks })
-    : runDemoCase({ addDocumentIds: r.addDocumentIds, ...hooks });
+    : runDemoCase({ addDocumentIds: r.addDocumentIds, claude: false, ...hooks });
 }

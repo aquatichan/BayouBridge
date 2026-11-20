@@ -1,4 +1,4 @@
-import type { EvidenceType } from "@/lib/types";
+import type { EvidenceType, NeedKey } from "@/lib/types";
 
 // Curated recovery-pathway database. Each record is hand-written from an
 // official source and cites it. BayouBridge never claims eligibility: matches
@@ -11,7 +11,9 @@ export interface ProgramRule {
   agency: string;
   summary: string;
   /** Which needs or case facts make this pathway worth looking at. */
-  triggers: { need?: string; fact?: string; description: string }[];
+  triggers: { need?: NeedKey; fact?: "coverage_gap"; description: string }[];
+  /** The needs this pathway helps with: which facts a packet cites, and the case map's need → pathway links. */
+  serves: NeedKey[];
   requires: { type: EvidenceType; label: string }[];
   /** What renters need instead (they don't repair the building, so no contractor estimate). */
   requiresForRenters?: { type: EvidenceType; label: string }[];
@@ -49,6 +51,7 @@ export const programs: ProgramRule[] = [
     summary:
       "FEMA appeals are a signed letter sent within 60 days, with the registration and disaster numbers and documents such as proof of occupancy and, for owners, ownership.",
     triggers: [{ need: "fema_denial", description: "FEMA letter says ineligible for insufficient information" }],
+    serves: ["fema_denial", "roof_damage"],
     requires: [
       { type: "fema_determination", label: EVIDENCE_LABELS.fema_determination },
       { type: "proof_of_occupancy", label: EVIDENCE_LABELS.proof_of_occupancy },
@@ -74,6 +77,7 @@ export const programs: ProgramRule[] = [
     summary:
       "Wind and wind-driven rain damage may be covered under the homeowners policy, minus the hurricane deductible.",
     triggers: [{ need: "roof_damage", description: "Wind damage to roof documented in photos and estimate" }],
+    serves: ["roof_damage", "interior_water_damage"],
     requires: [
       { type: "damage_photo", label: EVIDENCE_LABELS.damage_photo },
       { type: "repair_estimate", label: EVIDENCE_LABELS.repair_estimate },
@@ -96,6 +100,7 @@ export const programs: ProgramRule[] = [
     triggers: [
       { fact: "coverage_gap", description: "Repair estimate is larger than what insurance is likely to pay" },
     ],
+    serves: ["roof_damage", "interior_water_damage"],
     requires: [
       { type: "repair_estimate", label: EVIDENCE_LABELS.repair_estimate },
       { type: "insurance_correspondence", label: EVIDENCE_LABELS.insurance_correspondence },
@@ -114,6 +119,7 @@ export const programs: ProgramRule[] = [
     summary:
       "Households with someone who depends on electric medical equipment can ask to be listed as critical care customers.",
     triggers: [{ need: "medical_power", description: "Household member uses {equipment}" }], // {equipment}: from the need fact
+    serves: ["medical_power"],
     requires: [
       { type: "medical_need_documentation", label: EVIDENCE_LABELS.medical_need_documentation },
     ],
@@ -128,6 +134,7 @@ export const programs: ProgramRule[] = [
     summary:
       "2-1-1 connects households with local food pantries and, when activated after a disaster, disaster food benefits.",
     triggers: [{ need: "food_loss", description: "Household lost refrigerated food during the outage" }],
+    serves: ["food_loss"],
     requires: [{ type: "loss_statement", label: EVIDENCE_LABELS.loss_statement }],
     nextAction: "Draft a referral message to a nearby food pantry partner.",
     nextActionHousehold: "Ask 2-1-1 Texas to connect you with a food pantry near you.",

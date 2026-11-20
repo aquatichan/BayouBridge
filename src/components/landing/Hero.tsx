@@ -15,8 +15,6 @@ import { LANDING, type Lang } from "./strings";
 export default function Hero({ lang, next }: { lang: Lang; next: RefObject<HTMLElement | null> }) {
   const t = LANDING[lang].hero;
   const reduced = useReducedMotion();
-  const words = t.title.join("").trim().split(/\s+/);
-  const accentAt = words.findIndex((w) => w.replace(/[.,]/g, "") === t.title[1]);
 
   // The poster paints first; the video takes over once the page has settled.
   const video = useRef<HTMLVideoElement>(null);
@@ -64,8 +62,7 @@ export default function Hero({ lang, next }: { lang: Lang; next: RefObject<HTMLE
           <div className="max-w-[min(760px,100%)]">
             <p className="kicker text-tide">{t.kicker}</p>
             <h1 id="hero-title" className="mt-5">
-              <BlurText key={lang} text={words.join(" ")} animateBy="words" direction="bottom" delay={70} trigger="load"
-                accent={accentAt >= 0 ? [accentAt] : undefined} accentClassName="accent text-tide"
+              <BlurText key={lang} text={t.title} animateBy="words" direction="bottom" delay={70} trigger="load"
                 className="headline text-[clamp(2.6rem,min(6vw,10vh),5.75rem)]" />
             </h1>
             <p className="mt-6 max-w-[540px] text-base leading-relaxed text-cream/70 md:text-lg">{t.sub}</p>
@@ -75,8 +72,10 @@ export default function Hero({ lang, next }: { lang: Lang; next: RefObject<HTMLE
                   {t.start}
                 </a>
               </Magnet>
-              <a href="#how" className="rounded-full border border-cream/30 px-7 py-3.5 text-sm font-semibold text-cream backdrop-blur-sm transition hover:border-tide hover:text-tide">{t.how}</a>
+              <a href="/case?sample=1" className="rounded-full border-2 border-tide/70 bg-tide/10 px-7 py-3.5 text-sm font-semibold text-tide backdrop-blur-sm transition hover:bg-tide hover:text-night">{t.example}</a>
+              <a href="#how" className="px-3 py-3.5 text-sm font-semibold text-cream/80 underline-offset-4 transition hover:text-tide hover:underline">{t.how}</a>
             </div>
+            <p className="mt-3 text-xs text-cream/55">{t.exampleNote}</p>
           </div>
 
           <div className="mt-auto flex items-end gap-8">
@@ -88,7 +87,7 @@ export default function Hero({ lang, next }: { lang: Lang; next: RefObject<HTMLE
                     <span className="headline text-[clamp(1.9rem,4.2vw,3.6rem)] tabular-nums">
                       {"prefix" in s && s.prefix}<CountUp to={s.to} duration={1.8} delay={0.4} trigger="load" />
                     </span>
-                    <span className="accent ml-1.5 text-[clamp(1rem,1.7vw,1.6rem)] text-cream/80">{s.suffix}</span>
+                    <span className="ml-1 text-[clamp(1rem,1.7vw,1.6rem)] font-medium text-cream/80">{s.suffix}</span>
                     <span className="mt-2 block text-sm leading-snug text-cream/60">{s.label}</span>
                   </dd>
                 </div>

@@ -1,7 +1,5 @@
 import { outbox } from "@/lib/store";
 
-export const dynamic = "force-dynamic";
-
 // GET /api/outbox?caseId=BB-0417: packets approved into the sandbox outbox
 // during this server session (in memory; cleared on restart).
 export async function GET(req: Request) {

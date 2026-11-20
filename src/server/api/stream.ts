@@ -1,10 +1,6 @@
 import { CaseError } from "@/lib/cases";
 import { readRunRequest, runRequested } from "@/lib/runRequest";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-export const maxDuration = 120;
-
 /** Minimum gap between activity events on the wire. Rules-mode runs finish in
  *  milliseconds; this keeps them watchable. Real Claude latency is never padded. */
 const MIN_EVENT_GAP_MS = 250;
@@ -12,14 +8,14 @@ const KEEP_ALIVE_MS = 10_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// POST /api/run/stream — the same run as POST /api/run, streamed as
+// POST /api/run/stream: the same run as POST /api/run, streamed as
 // Server-Sent Events while the agents work:
-//   event: task   { id, agent, label, status: "started" | "done" }
+//   event: task   TaskUpdate { id, agent, label, status, via? }
 //   event: agent  ActivityEvent (one per activity-log line)
 //   event: state  Partial<CaseState> (the slice a task just produced)
 //   event: done   { state, extraction } (authoritative final state)
 //   event: error  { message }
-// Body (optional): { addDocumentIds?: string[] }, same allow-list as /api/run.
+// Body: same as /api/run (see runRequest.ts).
 export async function POST(req: Request) {
   const parsed = await readRunRequest(req);
   if ("error" in parsed) return Response.json({ error: parsed.error }, { status: parsed.status });

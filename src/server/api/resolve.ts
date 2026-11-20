@@ -1,7 +1,5 @@
 import { resolveConflict } from "@/lib/store";
 
-export const dynamic = "force-dynamic";
-
 // POST /api/resolve { caseId, conflictId, value }: the household answers one of
 // "things that don't match" (which date of loss, which spelling of a name). The
 // value must be one the documents state. It is kept with the case and applied to

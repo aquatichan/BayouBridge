@@ -1,8 +1,5 @@
 import { addUploads, CaseError, parseTyped } from "@/lib/cases";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 // POST /api/cases/:id/documents (multipart/form-data)
 //   files:     photos (JPEG, PNG, WebP, GIF), PDFs or text files, up to 10 per case, 8 MB each
 //   statement: what happened, in the household's own words (typed or dictated)

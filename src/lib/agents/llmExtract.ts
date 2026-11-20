@@ -6,7 +6,7 @@ import { classify } from "./evidence";
 import { ExtractionError } from "./util";
 import { fillFromRules, validateFacts } from "./validate";
 
-// Evidence Agent — Claude extraction path. Only used when ANTHROPIC_API_KEY is
+// Evidence Agent, Claude extraction path. Only used when ANTHROPIC_API_KEY is
 // set on the server. The LLM only pulls facts out of text; every decision after
 // that (matching, deadlines, gaps) is deterministic code.
 
@@ -110,11 +110,6 @@ export async function extractWithClaude(doc: CaseDocument, opts: { signal?: Abor
 
 export type ClaudeFact = z.infer<typeof Extraction>["facts"][number];
 
-/**
- * Turn Claude's raw facts into an ExtractionResult the rules engine can trust:
- * validate quotes and normalized values, then add back anything the offline
- * rules extractor finds that Claude missed. Pure, so tests can call it directly.
- */
 const toFacts = (doc: CaseDocument, raw: ClaudeFact[]): Fact[] => raw.map((f, i) => ({
     id: `${doc.id}#c${i + 1}`,
     docId: doc.id,
@@ -126,6 +121,11 @@ const toFacts = (doc: CaseDocument, raw: ClaudeFact[]): Fact[] => raw.map((f, i)
     quote: f.quote,
 }));
 
+/**
+ * Turn Claude's raw facts into an ExtractionResult the rules engine can trust:
+ * validate quotes and normalized values, then add back anything the offline
+ * rules extractor finds that Claude missed. Pure, so tests can call it directly.
+ */
 export function fromClaudeOutput(doc: CaseDocument, raw: ClaudeFact[]): ExtractionResult {
   const facts = toFacts(doc, raw);
   const checked = validateFacts(doc, facts);

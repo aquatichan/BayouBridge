@@ -45,13 +45,15 @@ interface CaseRecord {
   outbox: OutboxItem[];
   /** Events logged after the run (approvals), so new events get fresh seq numbers. */
   extraEvents: ActivityEvent[];
+  /** Claude calls made for this case so far (see MAX_CLAUDE_READS in cases.ts). */
+  claudeReads: number;
   touchedAt: number;
 }
 
 const g = globalThis as typeof globalThis & { __bayoubridgeStore?: Map<string, CaseRecord> };
 const cases = (g.__bayoubridgeStore ??= new Map<string, CaseRecord>());
 
-const blank = (now: number): Omit<CaseRecord, "documents"> => ({ files: new Map(), approvals: {}, resolutions: {}, outbox: [], extraEvents: [], touchedAt: now });
+const blank = (now: number): Omit<CaseRecord, "documents"> => ({ files: new Map(), approvals: {}, resolutions: {}, outbox: [], extraEvents: [], claudeReads: 0, touchedAt: now });
 
 /** Drop session cases that haven't been used for CASE_TTL_MS. The shared demo case holds no personal data and stays. */
 function sweep(now: number) {
@@ -113,7 +115,8 @@ export function saveRun(state: CaseState, now = Date.now()): CaseState {
     return state;
   }
   rec.state = withApprovals(state, rec);
-  rec.documents = state.documents; // keeps what reading the files found out (kind, title, text)
+  // Keeps what reading the files found out (kind, title, text), plus anything uploaded while the run was going.
+  rec.documents = [...state.documents, ...rec.documents.filter((d) => !state.documents.some((x) => x.id === d.id))];
   rec.extraEvents = [];
   rec.touchedAt = now;
   return rec.state;

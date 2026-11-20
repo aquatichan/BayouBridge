@@ -7,7 +7,7 @@ import {
   buildGraph, buildPlan, caseContext, deriveNeeds, evidenceScore, findConflicts, matchPrograms, pickFollowUp, resolvePeople,
 } from "./recovery";
 
-// Coordinator — runs the agents as a task graph. Each task names the tasks it
+// Coordinator: runs the agents as a task graph. Each task names the tasks it
 // depends on. Tasks run once, in dependency order, and every step is logged so
 // the activity feed shows exactly what happened and why.
 
@@ -32,8 +32,6 @@ interface Task {
   run: () => Promise<void> | void;
 }
 
-// Rough minutes a caseworker spends on each step by hand (from navigator
-// interviews to be done this week — placeholders until then).
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** Which part of the case each task fills in, sent to `onState` when it finishes. */
@@ -61,6 +59,8 @@ export interface RunHooks {
   signal?: AbortSignal;
 }
 
+// Rough minutes a caseworker spends on each step by hand. Our own estimates,
+// not measured: the UI and activity log always call the total an estimate.
 const MANUAL_MINUTES = { extract: 8, occupancy: 5, people: 5, conflicts: 10, match: 25, gaps: 10, plan: 15, packet: 12, graph: 5 };
 
 export async function runCase(input: {
@@ -250,7 +250,7 @@ export async function runCase(input: {
     {
       id: "safety", agent: "Safety Agent", deps: ["packet"],
       run: () => {
-        // Every outbound action needs a navigator's approval, which only the server's approve route can record.
+        // Every outbound action needs approval (navigator or household), which only the server's approve route can record.
         state.plan = state.plan.map((t) => (t.owner === "BayouBridge" ? { ...t, requiresApproval: true } : t));
         const gated = state.plan.filter((t) => t.status !== "blocked" && t.requiresApproval).length;
         log("Safety Agent", "Applied approval gates", `${gated} outbound actions held for ${input.approver === "household" ? "your" : "navigator"} approval. Nothing is sent or submitted automatically.`);

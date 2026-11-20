@@ -65,7 +65,7 @@ export default function Newspaper({ article }: { article: Record<Lang, Article> 
             <span>{a.masthead[2]}</span>
           </div>
           <h1 className="mt-6 text-center font-serif text-[clamp(3.6rem,13vw,10.5rem)] font-extrabold leading-[0.9] tracking-[-0.03em] text-[#e8eefb]">{a.title}</h1>
-          <p className="mx-auto mt-8 max-w-[820px] text-center font-serif text-[clamp(1.25rem,2.4vw,1.9rem)] italic leading-snug text-cream/75">
+          <p className="mx-auto mt-8 max-w-[820px] text-center font-serif text-[clamp(1.25rem,2.4vw,1.9rem)] leading-snug text-cream/75">
             {a.deck[0]}<br className="hidden md:block" /> {a.deck[1]}
           </p>
           <div className="mt-10 overflow-hidden border-y border-white/15 py-3" aria-label={a.ticker.join(" · ")}>
@@ -96,7 +96,7 @@ export default function Newspaper({ article }: { article: Record<Lang, Article> 
         })}
 
         <div className="mt-16 flex flex-col gap-4 border-t border-white/15 pt-6 text-sm text-cream/60 md:flex-row md:items-center md:justify-between">
-          <p className="font-serif text-base italic">{a.colophon}</p>
+          <p>{a.colophon}</p>
           <Link href="/" className="text-tide underline-offset-4 hover:underline">{a.back}</Link>
         </div>
       </article>

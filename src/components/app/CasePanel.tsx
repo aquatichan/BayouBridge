@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import type { ActivityEvent, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { KIND_FOR_EVIDENCE } from "@/lib/typedKinds";
 import { DropZone, FilePicker, TypedDocEditor, type TypedDoc } from "./Onboarding";
-import { Folder, PaperSheet } from "./Papers";
+import PaperPile, { PaperThumb, type SamplePaper } from "./PaperPile";
 import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
-// The results panel of the immersive dashboard. It fills in as the agents finish.
+// The results panel next to the office. It fills in as the agents finish.
 
 const ICON: Record<CaseDocument["kind"], string> = {
   photo: "📷", estimate: "🧾", fema_letter: "✉️", insurance_email: "📧", voice_note: "🗣️", utility_bill: "💡",
@@ -25,9 +25,11 @@ function fmt(iso: string, lang: Lang) {
 export default function CasePanel(props: {
   s: CaseState | null; events: ActivityEvent[]; tasks: Record<string, TaskUpdate>; running: boolean; lang: Lang;
   outbox: OutboxItem[]; sample: boolean;
-  /** A sample case's documents still to come ("Your papers"), with the decoys mixed in. */
-  papers: Paper[];
-  onArrive: (docId: string) => void;
+  /** A sample case's papers still to drop in: the first pile, then what the family finds later. */
+  pile: { title: string; body: string; papers: SamplePaper[] } | null;
+  /** Papers dropped while the helpers were busy, waiting their turn. */
+  queued: number;
+  onDropPapers: (ids: string[]) => void;
   /** The household confirms one value of a conflict. */
   onResolve: (conflictId: string, value: string) => void;
   /** Which extractor actually read the documents in the last run (null until a run finishes). */
@@ -109,6 +111,7 @@ export default function CasePanel(props: {
               </p>
             )}
             <ul className="space-y-1.5">{docs.map((d) => <Doc key={d.id} d={d} s={s} lang={lang} read={read.has(d.id)} working={props.tasks[`extract:${d.id}`]?.status === "started"} />)}</ul>
+            {props.sample && props.pile && <p className="text-[11px] text-amber">👆 {t.laterHint}</p>}
             {!props.sample && s && (
               <div className="flex flex-wrap items-center gap-2">
                 <FilePicker lang={lang} onPick={props.onUpload} label={`＋ ${t.addMore}`} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-bg" />
@@ -162,108 +165,27 @@ export default function CasePanel(props: {
 }
 
 
-/** Which evidence a plan step is waiting on (none for steps that aren't waiting on a document). */
-function missingFor(task: PlanTask, s: CaseState): { type: string; label: string }[] {
-  if (task.id.startsWith("task:collect:")) {
-    const type = task.id.slice("task:collect:".length);
-    const e = s.matches.flatMap((m) => m.evidence).find((x) => x.type === type);
-    return e ? [{ type, label: e.label }] : [];
-  }
-  if (task.status !== "blocked") return [];
-  return s.matches.find((m) => m.programId === task.programId)?.evidence.filter((e) => !e.satisfiedBy.length).map((e) => ({ type: e.type, label: e.label })) ?? [];
-}
-
-const PAPER_MIME = "text/x-bayoubridge-paper";
-
-/**
- * "Your papers": a sample case's missing documents, mixed with a few that don't help.
- * Drag one onto a waiting step (or tap it, then the step). The right one is added to
- * the case and the helpers re-read it; a wrong one gets a hint about what the step needs.
- */
-function useTray(props: { s: CaseState | null; lang: Lang; papers: Paper[]; running: boolean; onArrive: (id: string) => void }) {
-  const { s, lang, papers, running, onArrive } = props;
-  const t = STRINGS[lang];
-  const [picked, setPicked] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ taskId: string; ok: boolean; text: string } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const say = (f: { taskId: string; ok: boolean; text: string }) => {
-    setFeedback(f);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setFeedback(null), f.ok ? 2500 : 5000);
-  };
-  const attach = (key: string, task: PlanTask) => {
-    if (!s || running) return;
-    setPicked(null); setOver(null);
-    const paper = papers.find((p) => p.key === key);
-    if (!paper) return;
-    const missing = missingFor(task, s);
-    if (paper.id && paper.provides && missing.some((m) => m.type === paper.provides)) {
-      say({ taskId: task.id, ok: true, text: t.rightOne });
-      onArrive(paper.id);
-    } else {
-      say({ taskId: task.id, ok: false, text: t.notQuite(paper.title, missing.map((m) => tr(m.label, lang)).join(", ")) });
-    }
-  };
-  const target = (task: PlanTask) => {
-    if (!s || !papers.some((p) => p.id) || !missingFor(task, s).length) return null;
-    return {
-      active: over === task.id,
-      picked,
-      feedback: feedback?.taskId === task.id ? feedback : null,
-      handlers: {
-        onDragOver: (e: React.DragEvent) => { if ([...e.dataTransfer.types].includes(PAPER_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(task.id); } },
-        onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null); },
-        onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(PAPER_MIME); if (k) { e.preventDefault(); attach(k, task); } },
-      },
-      attachPicked: () => picked && attach(picked, task),
-    };
-  };
-  const tray = s && papers.some((p) => p.id) ? (
-    <div className="rounded-2xl border border-amber/40 bg-amber-soft/30 p-3">
-      <h3 className="text-sm font-semibold text-ink">🗂️ {t.trayTitle}</h3>
-      <p className="mt-0.5 text-[11px] text-muted">{t.trayBody}</p>
-      <ul className="-mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1 pt-3 [scrollbar-width:thin]">
-        {papers.map((p, i) => (
-          <li key={p.key} className="shrink-0">
-            <button type="button" draggable={!running} disabled={running} aria-pressed={picked === p.key} aria-label={p.title}
-              onDragStart={(e) => { e.dataTransfer.setData(PAPER_MIME, p.key); e.dataTransfer.effectAllowed = "copy"; setPicked(p.key); }}
-              onDragEnd={() => setOver(null)}
-              onClick={() => setPicked((k) => (k === p.key ? null : p.key))}
-              className="group flex w-[84px] cursor-grab flex-col items-center gap-1 rounded-xl p-1 text-center outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-tide disabled:opacity-50">
-              <span className="transition-transform group-hover:-translate-y-1"><PaperSheet icon={p.icon} seed={i + 1} lifted={picked === p.key} /></span>
-              <span className={`line-clamp-2 text-[10px] font-medium leading-tight ${picked === p.key ? "text-tide" : "text-ink"}`}>{p.title}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  ) : null;
-  return { tray, target };
-}
-
-export type Paper = { key: string; id?: string; provides?: string; icon: string; title: string };
-
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-function NextSteps({ s, events, running, lang, sample, papers, approving, approveError, onApprove, onUpload, onType, uploading, onArrive, onResolve, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
+function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPapers, approving, approveError, onApprove, onUpload, onType, uploading, onResolve, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
   const t = STRINGS[lang];
-  const { tray, target } = useTray({ s, lang, papers, running, onArrive });
   const [typing, setTyping] = useState(false);
   const total = s?.documents.length ?? 0;
-  const latest = events.at(-1);
   return (
     <>
+      {sample && pile && (
+        <PaperPile lang={lang} title={pile.title} body={pile.body} papers={pile.papers} busy={running} queued={queued} onDrop={onDropPapers} />
+      )}
+
       {running && (
-        <div className="rounded-2xl bg-bayou-soft p-3 text-sm">
+        <div className="rounded-2xl bg-bayou-soft p-3 text-sm" aria-live="polite">
           <div className="flex items-center gap-2 font-semibold text-tide">
             <span aria-hidden className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
             {total ? t.readingDocs(Math.min(read.size, total), total) : `${t.working}…`}
           </div>
-          {latest && <p className="mt-1 text-xs text-muted">{t.latest}: {tr(latest.agent, lang)} · {tr(latest.action, lang)}</p>}
+          <Feed events={events} lang={lang} />
         </div>
       )}
 
@@ -281,7 +203,7 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
           <p className="mt-1 text-[11px] text-muted">{tr(s.followUp.why, lang)}</p>
           <div className="mt-2">
             {sample
-              ? papers.some((p) => p.id) && <p className="text-xs font-medium text-amber">👇 {t.trayHint}</p>
+              ? pile && pile.papers[0]?.stage === "later" && <p className="text-xs font-medium text-amber">👆 {t.laterHint}</p>
               : (
                 <div className="flex flex-wrap gap-2">
                   <FilePicker lang={lang} onPick={onUpload} label={`📎 ${t.uploadIt}`} className="rounded-full bg-bayou px-3 py-1.5 text-xs font-semibold text-white" />
@@ -306,17 +228,13 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
         </div>
       )}
 
-      {sample && has("Built recovery plan") && tray}
-
       {s && has("Built recovery plan") && (
         <div>
           <h3 className="mb-1.5 text-sm font-semibold text-muted">{t.plan}</h3>
           {approveError && <p role="alert" className="mb-2 rounded-xl bg-clay-soft p-2 text-xs text-clay">{approveError}</p>}
           <ol className="space-y-2">{s.plan.map((task) => {
-            const drop = sample ? target(task) : null;
             return (
-            <li key={task.id} {...drop?.handlers}
-              className={`rounded-2xl border p-3 transition ${drop?.active ? "border-tide bg-tide/10" : drop ? "border-dashed border-amber/60" : "border-line"}`}>
+            <li key={task.id} className="rounded-2xl border border-line p-3 transition">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 text-sm font-semibold">{tr(task.title, lang)}</div>
                 {task.status === "blocked" && <span className="shrink-0 rounded-full bg-clay-soft px-2 py-0.5 text-[11px] text-clay">{t.blocked}</span>}
@@ -364,32 +282,68 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
                   </details>
                 );
               })()}
-              {drop && !drop.feedback && (
-                <div className="mt-2 flex items-center gap-3">
-                  <button type="button" onClick={drop.attachPicked} disabled={running || !drop.picked}
-                    aria-label={drop.picked ? t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "") : t.dropPaper}
-                    className={`rounded-lg transition ${drop.picked ? "animate-pulse cursor-pointer" : "cursor-default"}`}>
-                    <Folder programId={task.id.startsWith("task:collect:") ? undefined : task.programId} open={drop.active || !!drop.picked} />
-                  </button>
-                  {drop.picked
-                    ? <button onClick={drop.attachPicked} disabled={running} className="rounded-full bg-amber px-3 py-1 text-xs font-semibold text-night disabled:opacity-50">📎 {t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "")}</button>
-                    : <p className="text-[11px] font-medium text-amber">{t.dropPaper}</p>}
-                </div>
-              )}
-              {drop?.feedback && (
-                <p role="status" className={`mt-2 rounded-lg px-2 py-1.5 text-xs ${drop.feedback.ok ? "bg-moss/20 text-ink" : "bg-clay-soft text-clay"}`}>
-                  {drop.feedback.ok ? "✓ " : ""}{drop.feedback.text}
-                </p>
-              )}
             </li>
             );
           })}</ol>
         </div>
       )}
 
-      {!s?.plan.length && !running && !s && <Waiting>{t.waitingResults}</Waiting>}
+      {s && has("Built recovery plan") && s.documents.length > 0 && <PaperUses s={s} lang={lang} />}
+
+      {!s?.plan.length && !running && !s && !pile && <Waiting>{t.waitingResults}</Waiting>}
       {s && !running && !s.plan.length && has("Built recovery plan") && <Waiting>{t.noPlan}</Waiting>}
     </>
+  );
+}
+
+/** The last few activity-log lines, newest first, as plain sentences. */
+function Feed({ events, lang }: { events: ActivityEvent[]; lang: Lang }) {
+  const last = events.slice(-4).reverse();
+  if (!last.length) return null;
+  return (
+    <ol className="mt-2 space-y-1.5 border-t border-tide/15 pt-2">
+      {last.map((e, i) => (
+        <li key={e.seq} className={`text-xs leading-snug ${i === 0 ? "text-ink" : "text-muted"}`}>
+          <b className={i === 0 ? "text-tide" : ""}>{tr(e.agent, lang)}</b> · {tr(e.action, lang)}
+          {i === 0 && e.detail && <span className="mt-0.5 line-clamp-2 block text-[11px] text-muted">{tr(e.detail, lang)}</span>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Which kinds of help a document counts toward, and as what. */
+function usesOf(docId: string, s: CaseState) {
+  return s.matches.flatMap((m) => m.evidence.filter((e) => e.satisfiedBy.includes(docId)).map((e) => ({ program: m.name, programId: m.programId, as: e.label })));
+}
+
+/** "What each paper is used for": every document and the help it counts toward. */
+function PaperUses({ s, lang }: { s: CaseState; lang: Lang }) {
+  const t = STRINGS[lang];
+  return (
+    <div>
+      <h3 className="mb-1.5 text-sm font-semibold text-muted">{t.usedTitle}</h3>
+      <ul className="space-y-1.5">
+        {s.documents.map((d, i) => {
+          const uses = usesOf(d.id, s);
+          return (
+            <li key={d.id} className="flex items-start gap-2.5 rounded-xl border border-line p-2">
+              <PaperThumb p={d} seed={i + 1} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-semibold">{tr(d.title, lang)}</div>
+                {uses.length ? (
+                  <ul className="mt-1 flex flex-wrap gap-1">
+                    {uses.map((u) => (
+                      <li key={u.programId + u.as} title={tr(u.as, lang)} className="rounded-full bg-bayou-soft px-2 py-0.5 text-[10px] font-medium text-tide">{tr(u.program, lang)}</li>
+                    ))}
+                  </ul>
+                ) : <p className="mt-0.5 text-[10px] text-muted">{t.notUsed}</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -410,6 +364,10 @@ function Doc({ d, s, lang, read, working }: { d: CaseDocument; s: CaseState | nu
       {open && (
         <div className="space-y-2 border-t border-line p-2.5 text-xs">
           {d.text.trim() ? <p className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-bg p-2.5 text-[12px] leading-relaxed">{d.text}</p> : <p className="text-muted">{t.notRead}</p>}
+          {s && read && (() => {
+            const uses = usesOf(d.id, s);
+            return <p className="text-[11px] text-muted"><b className="text-ink">{t.usedFor}:</b> {uses.length ? uses.map((u) => `${tr(u.program, lang)} (${tr(u.as, lang)})`).join("; ") : t.notUsed}</p>;
+          })()}
           {facts.map((f) => <div key={f.id} className="flex justify-between gap-2"><span><b>{tr(f.label, lang)}</b>: {tr(f.value, lang)}</span></div>)}
         </div>
       )}

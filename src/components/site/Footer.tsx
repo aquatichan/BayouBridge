@@ -3,15 +3,14 @@
 import Link from "next/link";
 import type { Lang } from "@/components/landing/strings";
 
-// The site footer: a closing line and a link to start, where to read more,
-// the small print, and a big quiet wordmark. No card.
+// The site footer: a closing line with a link to start, links, the small
+// print, and a faint wordmark.
 
 const STRINGS = {
   en: {
-    kicker: "Ready when you are",
-    line: ["Start with one ", "photo", "."],
+    line: "Have a FEMA letter or a photo of the damage? Start with that.",
     start: "Start a case",
-    explore: "Explore",
+    explore: "Pages",
     links: [["How it works", "/#how"], ["The details", "/details"], ["Privacy policy", "/privacy"], ["Look at the example case", "/case?sample=1"]],
     fine: "The small print",
     print: [
@@ -23,10 +22,9 @@ const STRINGS = {
     made: "Aaron Qin, Miheer Parasnis, Reyansh Maheshwari · Made in Houston",
   },
   es: {
-    kicker: "Cuando usted esté listo",
-    line: ["Empiece con una ", "foto", "."],
+    line: "¿Tiene una carta de FEMA o una foto de los daños? Empiece con eso.",
     start: "Empezar un caso",
-    explore: "Explore",
+    explore: "Páginas",
     links: [["Cómo funciona", "/#how"], ["Los detalles", "/details"], ["Política de privacidad", "/privacy"], ["Vea el caso de ejemplo", "/case?sample=1"]],
     fine: "La letra pequeña",
     print: [
@@ -45,17 +43,14 @@ export default function Footer({ lang }: { lang: Lang }) {
     <footer id="footer" className="relative z-10 px-[calc(var(--frame)+var(--gutter))] pb-[calc(var(--frame)+28px)] pt-28 text-cream md:pt-40">
       <div className="grid gap-12 border-t-[3px] border-cream/85 pt-10 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div>
-          <p className="kicker text-tide">{t.kicker}</p>
-          <p className="headline mt-3 text-[clamp(2.4rem,5vw,4.25rem)]">
-            {t.line[0]}<span className="accent text-tide">{t.line[1]}</span>{t.line[2]}
-          </p>
+          <p className="headline max-w-[16ch] text-[clamp(2rem,4.2vw,3.6rem)]">{t.line}</p>
           <Link href="/case?start=1" className="group mt-6 inline-flex items-center gap-2 text-lg font-semibold text-sun">
             {t.start}
             <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">→</span>
           </Link>
         </div>
         <nav aria-label={t.explore}>
-          <h2 className="font-serif text-lg italic text-cream/60">{t.explore}</h2>
+          <h2 className="text-sm font-semibold text-cream/60">{t.explore}</h2>
           <ul className="mt-4 space-y-2.5">
             {t.links.map(([label, href]) => (
               <li key={href}><Link href={href} className="text-cream/85 underline-offset-4 transition hover:text-tide hover:underline">{label}</Link></li>
@@ -63,7 +58,7 @@ export default function Footer({ lang }: { lang: Lang }) {
           </ul>
         </nav>
         <div>
-          <h2 className="font-serif text-lg italic text-cream/60">{t.fine}</h2>
+          <h2 className="text-sm font-semibold text-cream/60">{t.fine}</h2>
           <ul className="mt-4 space-y-2.5 text-sm leading-relaxed text-cream/70">
             {t.print.map((p) => <li key={p}>{p}</li>)}
           </ul>

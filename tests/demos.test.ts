@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { POST as createCase } from "../src/app/api/cases/route";
-import { POST as resolve } from "../src/app/api/resolve/route";
+import { POST as createCase } from "../src/server/api/cases";
+import { POST as resolve } from "../src/server/api/resolve";
 import { DEMO_CARDS, type DemoId } from "../src/data/demoList";
 import { DEMOS } from "../src/data/demos";
 import { runSessionCase } from "../src/lib/cases";

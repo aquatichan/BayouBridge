@@ -469,7 +469,8 @@ function LabelProjector({ director, labels, tops }: {
       if (!visible) continue;
       const x = ((v.current.x + 1) / 2) * size.width;
       const y = ((1 - v.current.y) / 2) * size.height;
-      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+      // Mascot tags grow upward from just above the head (a speech bubble can sit on top); signs are centered.
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, ${kind === "m" ? "-100%" : "-50%"})`;
       el.style.zIndex = String(Math.round((1 - v.current.z) * 10000));
     }
   });
@@ -513,7 +514,6 @@ function Core() {
   });
   return (
     <group>
-      {/* steady rings */}
       {[[1.3, 1.42, 0.9], [2.1, 2.16, 0.55], [3.0, 3.05, 0.45], [4.1, 4.14, 0.3], [5.4, 5.44, 0.22]].map(([a, b, o]) => (
         <mesh key={a} rotation-x={-Math.PI / 2} position={[0, 0.01, 0]}><ringGeometry args={[a, b, 96]} /><Glow opacity={o} /></mesh>
       ))}
@@ -528,7 +528,6 @@ function Core() {
       <mesh position={[0, 0.1, 0]} receiveShadow><cylinderGeometry args={[0.95, 1.05, 0.2, 48]} /><Hull color={TRIM} metal={0.7} /></mesh>
       <mesh position={[0, 0.21, 0]} rotation-x={-Math.PI / 2}><ringGeometry args={[0.7, 0.92, 48]} /><Glow /></mesh>
       <mesh position={[0, 2.0, 0]}><cylinderGeometry args={[1.0, 0.75, 3.6, 48, 1, true]} /><Glow color={BLUE} opacity={0.12} side={THREE.DoubleSide} /></mesh>
-      {/* the globe */}
       <group ref={globe} position={[0, 4.7, 0]} scale={1.05}>
         <mesh><sphereGeometry args={[0.98, 32, 24]} /><Glow color={BLUE} opacity={0.22} /></mesh>
         <mesh><sphereGeometry args={[1.0, 24, 16]} /><meshBasicMaterial color={CYAN} wireframe transparent opacity={0.18} toneMapped={false} depthWrite={false} /></mesh>

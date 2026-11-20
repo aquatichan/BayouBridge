@@ -66,7 +66,7 @@ export const TYPED_KINDS: Record<TypedKind, { en: string; es: string; hint: { en
   },
 };
 
-export const isTypedKind = (k: unknown): k is TypedKind => typeof k === "string" && k in TYPED_KINDS;
+export const isTypedKind = (k: unknown): k is TypedKind => typeof k === "string" && Object.hasOwn(TYPED_KINDS, k);
 
 /** The document type that supplies a missing piece of evidence, for "Type it instead". */
 export const KIND_FOR_EVIDENCE: Record<EvidenceType, TypedKind> = {

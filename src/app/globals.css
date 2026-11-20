@@ -64,7 +64,9 @@ body {
 
 /* ── Landing page ─────────────────────────────────────────────────────────── */
 
-html:has(main.landing) { background: var(--night); }
+/* No rubber-band overscroll past the top or bottom: it pulled the page away and showed the backdrop. */
+html:has(main.landing) { background: var(--night); overscroll-behavior-y: none; }
+body:has(main.landing) { background: var(--night); }
 @media (prefers-reduced-motion: no-preference) {
   html:has(main.landing) { scroll-behavior: smooth; }
 }
@@ -86,12 +88,10 @@ html:has(main.landing) { background: var(--night); }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 0 48px rgb(125 211 252 / 0.05), 0 30px 80px rgb(0 0 0 / 0.35);
 }
 
-/* A short line above a headline: serif italic, sentence case. */
-.kicker { font-family: var(--font-newsreader); font-style: italic; font-size: 1.125rem; line-height: 1.3; }
+/* A short line above a headline. */
+.kicker { font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }
 
-/* Big tight grotesk headlines with one serif italic accent word. */
 .headline { letter-spacing: -0.02em; line-height: 0.98; font-weight: 600; }
-.accent { font-family: var(--font-newsreader); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
 
 /* The "unblocked" moment: a short amber pop and glow. */
 @keyframes unlock {

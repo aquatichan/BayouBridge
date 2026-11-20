@@ -269,7 +269,7 @@ export function matchPrograms(
     && !have("insurance_correspondence").length && !have("insurance_policy").length;
 
   return programs.filter((p) => !(p.ownersOnly && tenure === "renter") && !(p.needsInsurance && uninsured)).map((p: ProgramRule) => {
-    const firing = p.triggers.filter((t) => (t.need ? needKeys.has(t.need as NeedKey) : t.fact ? signals[t.fact] : false));
+    const firing = p.triggers.filter((t) => (t.need ? needKeys.has(t.need) : t.fact ? signals[t.fact] : false));
     const requires = tenure === "renter" && p.requiresForRenters ? p.requiresForRenters : p.requires;
     const evidence = requires.map((r) => {
       const satisfiedBy = have(r.type);
@@ -292,7 +292,11 @@ export function matchPrograms(
     const equipment = ctx?.medical?.equipment;
     const withArticle = equipment ? `${/^[aeiou]/i.test(equipment) ? "an" : "a"} ${equipment}` : "powered medical equipment";
     const reasons = firing.map((t) => t.description.replace("{equipment}", withArticle));
-    if (deadline) reasons.push(`Deadline ${deadline.date} (${daysBetween(today, deadline.date)} days left): ${deadline.basis}`);
+    if (deadline) {
+      const left = daysBetween(today, deadline.date);
+      const when = left > 0 ? `${left} day${left === 1 ? "" : "s"} left` : left === 0 ? "today" : `passed ${-left} day${left === -1 ? "" : "s"} ago`;
+      reasons.push(`Deadline ${deadline.date} (${when}): ${deadline.basis}`);
+    }
 
     return {
       programId: p.id,
@@ -497,13 +501,8 @@ export const NEED_EVIDENCE: Record<NeedKey, string[]> = {
   fema_denial: ["fema_ineligible_info"],
 };
 
-export const PROGRAM_NEEDS: Record<string, NeedKey[]> = {
-  "fema-appeal": ["fema_denial", "roof_damage"],
-  "insurance-claim": ["roof_damage", "interior_water_damage"],
-  "sba-home-loan": ["roof_damage", "interior_water_damage"],
-  "critical-care": ["medical_power"],
-  "food-assistance": ["food_loss"],
-};
+/** The needs each pathway serves, from `serves` on its record in resources.ts. */
+export const PROGRAM_NEEDS: Record<string, NeedKey[]> = Object.fromEntries(programs.map((p) => [p.id, p.serves]));
 
 export function buildGraph(docs: CaseDocument[], ex: ExtractionResult[], needs: Need[], matches: ProgramMatch[]) {
   const nodes: GraphNode[] = [];
