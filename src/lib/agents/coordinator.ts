@@ -240,7 +240,7 @@ export async function runCase(input: {
       // Packets only for pathways with every required document on file.
       id: "packet", agent: "Packet Agent", deps: ["plan"],
       run: () => {
-        state.packets = state.matches.filter((m) => !m.blocked).map((m) => buildPacket(m, state));
+        state.packets = state.matches.filter((m) => !m.blocked).map((m) => buildPacket(m, state, input.approver));
         for (const p of state.packets) {
           log("Packet Agent", `Drafted packet for ${state.matches.find((m) => m.programId === p.programId)?.name ?? p.programId}`,
             `${plural(p.attachments.length, "attachment")}, ${plural(p.citations.length, "cited fact")}, English and Spanish cover note. Held as a draft.`, p.attachments.map((a) => a.docId), MANUAL_MINUTES.packet);

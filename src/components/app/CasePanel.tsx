@@ -87,8 +87,12 @@ export default function CasePanel(props: {
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-bayou transition-all duration-700" style={{ width: `${m.readiness * 100}%` }} /></div>
             <div className="mt-1 flex justify-between gap-2 text-[11px] text-muted">
               <span>{t.onFile(Math.round(m.readiness * 100))}</span>
-              {m.deadline && <span className="text-amber">{t.due(fmt(m.deadline.date, lang), Math.round((Date.parse(m.deadline.date) - Date.parse(s.today)) / 864e5))}</span>}
+              {m.deadline && (() => {
+                const days = Math.round((Date.parse(m.deadline.date) - Date.parse(s.today)) / 864e5);
+                return <span className={days < 0 ? "font-semibold text-clay" : "text-amber"}>{days < 0 ? t.overdue(fmt(m.deadline.date, lang)) : t.due(fmt(m.deadline.date, lang), days)}</span>;
+              })()}
             </div>
+            {m.reasons.filter((r) => !r.startsWith("Deadline")).slice(0, 1).map((r) => <p key={r} className="mt-1 text-[11px] text-muted">{t.why}: {tr(r, lang)}</p>)}
             <ul className="mt-2 space-y-0.5 text-xs">
               {m.evidence.map((e) => <li key={e.type} className={e.satisfiedBy.length ? "" : "text-clay"}>{e.satisfiedBy.length ? "✅" : "⛔"} {tr(e.label, lang)}</li>)}
             </ul>
@@ -259,7 +263,7 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
             <span aria-hidden className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
             {total ? t.readingDocs(Math.min(read.size, total), total) : `${t.working}…`}
           </div>
-          {latest && <p className="mt-1 text-xs text-muted">{t.latest}: {latest.agent} · {latest.action}</p>}
+          {latest && <p className="mt-1 text-xs text-muted">{t.latest}: {tr(latest.agent, lang)} · {tr(latest.action, lang)}</p>}
         </div>
       )}
 
@@ -341,6 +345,18 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
                 ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-night">{t.approved}</span>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}
                   className="mt-2 rounded-full border border-tide/60 px-3 py-1 text-xs font-semibold text-tide hover:bg-tide hover:text-night disabled:opacity-50">{t.approve}</button>)}
+              {task.status === "needs_approval" && !task.approved && (() => {
+                const p = s.packets.find((x) => x.programId === task.programId);
+                return p && (
+                  <details className="mt-2 rounded-xl bg-bg/60 p-2 text-xs">
+                    <summary className="cursor-pointer font-semibold text-tide">{t.preview}</summary>
+                    <p className="mt-1.5"><b>{t.to}:</b> {tr(p.to, lang)}</p>
+                    <p className="mt-0.5"><b>{t.attached}:</b> {p.attachments.map((a) => tr(a.title, lang)).join(", ")}</p>
+                    <p className="mt-1.5 leading-relaxed text-ink">{p.bilingualCover[lang]}</p>
+                    <p className="mt-1.5 text-[11px] text-muted">{t.previewNote}</p>
+                  </details>
+                );
+              })()}
               {drop && !drop.feedback && (
                 <div className="mt-2 flex items-center gap-3">
                   <button type="button" onClick={drop.attachPicked} disabled={running || !drop.picked}
@@ -365,6 +381,7 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
       )}
 
       {!s?.plan.length && !running && !s && <Waiting>{t.waitingResults}</Waiting>}
+      {s && !running && !s.plan.length && has("Built recovery plan") && <Waiting>{t.noPlan}</Waiting>}
     </>
   );
 }

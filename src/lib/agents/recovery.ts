@@ -424,7 +424,9 @@ export function pickFollowUp(matches: ProgramMatch[], today: string, ctx: CaseCo
     evidence: type,
     unblocks: info.unblocks,
     ...q,
-    why: `Unblocks ${info.unblocks.length} pathway${info.unblocks.length > 1 ? "s" : ""}${info.hint ? `. The household already mentioned having it (${info.hint})` : ""}.`,
+    // The caseworker reads "the household"; in the app the household reads about itself.
+    why: `Unblocks ${info.unblocks.length} pathway${info.unblocks.length > 1 ? "s" : ""}${info.hint
+      ? ctx.approver === "household" ? `. You mentioned you have it (${info.hint})` : `. The household already mentioned having it (${info.hint})` : ""}.`,
   };
 }
 
