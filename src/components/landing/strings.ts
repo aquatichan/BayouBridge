@@ -7,7 +7,7 @@ export type Headline = [string, string, string];
 const en = {
   nav: { how: "How it works", details: "The details", start: "Start a case" },
   hero: {
-    kicker: "Teen Hacks Houston — For Houston families rebuilding after a storm",
+    kicker: "For Houston families rebuilding after a storm",
     title: ["Get the recovery help you’re ", "owed", "."] as Headline,
     sub: "Snap photos of your damage and your letters. BayouBridge sorts them, finds help you may qualify for, and tells you the one thing to do next.",
     start: "Start a case",

@@ -11,7 +11,13 @@ export interface FlowNode { title: string; sub?: string; tag?: string; tone?: "t
 /** One step of a flowchart: the nodes in a row happen side by side; `edge` labels the arrow down to the next row. */
 export interface FlowRow { nodes: FlowNode[]; edge?: string }
 export interface Flowchart { title: string; rows: FlowRow[]; note: string }
-export interface Section { heading: string; paragraphs: string[]; figure?: Figure; figures?: Figure[]; flow?: Flowchart }
+/** One task in the coordinator's graph. `wave` is the row (0-based); `col` the column; the stack look means "one per paper". */
+export interface DagNode { id: string; label: string; sub?: string; wave: number; col: "l" | "c" | "r"; wide?: number; stack?: boolean; tone?: "tide" | "sun" | "plain" }
+/** `edges` are [from, to, optional x where the arrow lands on the target]. */
+export interface Dag { title: string; legend: { label: string; tone: "tide" | "sun" | "plain" }[]; waves: string[]; nodes: DagNode[]; edges: [string, string, number?][]; note: string }
+export interface TraceLine { kind: "req" | "event" | "data" | "note" | "gap"; text: string }
+export interface Trace { title: string; window: string; lines: TraceLine[]; note: string }
+export interface Section { heading: string; paragraphs: string[]; figure?: Figure; figures?: Figure[]; flow?: Flowchart; dag?: Dag; trace?: Trace }
 
 export interface Article {
   masthead: [string, string, string];
@@ -145,6 +151,139 @@ export const FLOWS: Record<Lang, { pipeline: Flowchart; fallback: Flowchart; bil
   },
 };
 
+// ── Orchestration: the task graph, the failure path and the live stream ──────
+
+const DAG_NODES_EN: DagNode[] = [
+  { id: "extract", label: "Read each paper", sub: "all at once · AI or rules", wave: 0, col: "c", wide: 290, stack: true, tone: "tide" },
+  { id: "occupancy", label: "Check the bill", sub: "address and dates", wave: 1, col: "l", tone: "tide" },
+  { id: "people", label: "Who’s who", sub: "match the names", wave: 1, col: "r", tone: "tide" },
+  { id: "needs", label: "What they need", sub: "coordinator", wave: 2, col: "c", tone: "plain" },
+  { id: "conflicts", label: "What doesn’t match", sub: "dates and names", wave: 2, col: "r", tone: "tide" },
+  { id: "match", label: "Help that fits", sub: "5 kinds, official sources", wave: 3, col: "c", tone: "tide" },
+  { id: "gaps", label: "Next question", sub: "score each missing paper", wave: 4, col: "c", tone: "tide" },
+  { id: "plan", label: "The plan", sub: "safety first, then deadline", wave: 5, col: "c", wide: 260, tone: "plain" },
+  { id: "packet", label: "Draft packets", sub: "only with every document", wave: 6, col: "l", tone: "sun" },
+  { id: "graph", label: "Case map", sub: "nodes and links", wave: 6, col: "r", tone: "plain" },
+  { id: "safety", label: "Approval gates", sub: "nothing sends itself", wave: 7, col: "l", tone: "sun" },
+];
+const DAG_EDGES: Dag["edges"] = [
+  ["extract", "occupancy"], ["extract", "people"], ["people", "needs", 520], ["people", "conflicts"],
+  ["needs", "match"], ["occupancy", "match", 380], ["match", "gaps"], ["gaps", "plan"], ["conflicts", "plan", 560],
+  ["plan", "packet"], ["plan", "graph"], ["packet", "safety"],
+];
+
+export const DAGS: Record<Lang, Dag> = {
+  en: {
+    title: "Diagram 1. The task graph, wave by wave",
+    legend: [{ label: "Reads and checks evidence", tone: "tide" }, { label: "Coordinator", tone: "plain" }, { label: "Drafts and safety", tone: "sun" }],
+    waves: Array.from({ length: 8 }, (_, i) => `WAVE ${i + 1}`),
+    nodes: DAG_NODES_EN,
+    edges: DAG_EDGES,
+    note: "Every box is a task that names the tasks it waits for. The coordinator starts everything that is ready, all at once, then looks again. With six papers and a bill to check that is 16 tasks in 8 waves, and the six readings run side by side, so reading costs one paper’s time, not six.",
+  },
+  es: {
+    title: "Esquema 1. El grafo de tareas, ola por ola",
+    legend: [{ label: "Lee y revisa evidencia", tone: "tide" }, { label: "Coordinador", tone: "plain" }, { label: "Borradores y seguridad", tone: "sun" }],
+    waves: Array.from({ length: 8 }, (_, i) => `OLA ${i + 1}`),
+    nodes: [
+      { ...DAG_NODES_EN[0], label: "Leer cada papel", sub: "todos a la vez · IA o reglas" },
+      { ...DAG_NODES_EN[1], label: "Revisar la factura", sub: "dirección y fechas" },
+      { ...DAG_NODES_EN[2], label: "Quién es quién", sub: "unir los nombres" },
+      { ...DAG_NODES_EN[3], label: "Qué necesitan", sub: "coordinador" },
+      { ...DAG_NODES_EN[4], label: "Lo que no coincide", sub: "fechas y nombres" },
+      { ...DAG_NODES_EN[5], label: "Ayuda que aplica", sub: "5 tipos, fuentes oficiales" },
+      { ...DAG_NODES_EN[6], label: "Siguiente pregunta", sub: "puntúa cada papel faltante" },
+      { ...DAG_NODES_EN[7], label: "El plan", sub: "primero seguridad, luego plazo" },
+      { ...DAG_NODES_EN[8], label: "Borradores", sub: "solo con todos los papeles" },
+      { ...DAG_NODES_EN[9], label: "Mapa del caso", sub: "nodos y enlaces" },
+      { ...DAG_NODES_EN[10], label: "Puertas de aprobación", sub: "nada se envía solo" },
+    ],
+    edges: DAG_EDGES,
+    note: "Cada caja es una tarea que nombra de cuáles depende. El coordinador arranca todo lo que está listo, a la vez, y vuelve a mirar. Con seis papeles y una factura por revisar son 16 tareas en 8 olas, y las seis lecturas corren en paralelo: leer cuesta el tiempo de un papel, no de seis.",
+  },
+};
+
+export const STEP_FLOW: Record<Lang, Flowchart> = {
+  en: {
+    title: "Flowchart 4. When one step itself breaks",
+    rows: [
+      { nodes: [{ title: "A step throws an error", tone: "plain" }], edge: "the coordinator catches it" },
+      { nodes: [
+        { tag: "Has a safe default", title: "Use the default and warn", sub: "A paper, the bill check, who’s who, mismatches, the next question, drafts, approval gates, the case map", tone: "tide" },
+        { tag: "No safe guess", title: "Mark it failed", sub: "What the family needs, the matches and the plan can’t be guessed", tone: "sun" },
+      ], edge: "look at what depends on it" },
+      { nodes: [
+        { title: "Dependents carry on", sub: "They read the safe default; the app shows a warning" },
+        { title: "Dependents are skipped", sub: "One log line each says which step didn’t finish", tone: "sun" },
+      ] },
+      { nodes: [{ title: "The run still finishes", sub: "A step that can never start is caught, not waited on forever", tone: "tide" }] },
+    ],
+    note: "Tests break steps on purpose and check that the run ends with a plan or a clear list of what was skipped.",
+  },
+  es: {
+    title: "Diagrama 4. Cuando un paso mismo se rompe",
+    rows: [
+      { nodes: [{ title: "Un paso lanza un error", tone: "plain" }], edge: "el coordinador lo atrapa" },
+      { nodes: [
+        { tag: "Tiene valor seguro", title: "Usar el valor seguro y avisar", sub: "Un papel, la factura, quién es quién, desajustes, la siguiente pregunta, borradores, puertas de aprobación, el mapa", tone: "tide" },
+        { tag: "No se puede adivinar", title: "Marcarlo como fallido", sub: "Lo que necesitan, las coincidencias y el plan no se pueden adivinar", tone: "sun" },
+      ], edge: "ver qué depende de él" },
+      { nodes: [
+        { title: "Los dependientes siguen", sub: "Leen el valor seguro; la app muestra un aviso" },
+        { title: "Los dependientes se omiten", sub: "Una línea del registro dice qué paso no terminó", tone: "sun" },
+      ] },
+      { nodes: [{ title: "La corrida igual termina", sub: "Un paso que nunca puede empezar se detecta, no se espera para siempre", tone: "tide" }] },
+    ],
+    note: "Las pruebas rompen pasos a propósito y comprueban que la corrida termine con un plan o una lista clara de lo omitido.",
+  },
+};
+
+const TRACE_LINES: TraceLine[] = [
+  { kind: "req", text: "POST /api/run/stream" },
+  { kind: "gap", text: "" },
+  { kind: "event", text: "event: agent" },
+  { kind: "data", text: 'data: {"seq":1,"agent":"Coordinator","action":"Started case run","detail":"6 documents queued. 16 tasks in the graph."}' },
+  { kind: "gap", text: "" },
+  { kind: "event", text: "event: task" },
+  { kind: "data", text: 'data: {"id":"extract:h2-roof-photo","agent":"Evidence Agent","label":"Reading PXL_0311.jpg","status":"started","via":"claude"}' },
+  { kind: "gap", text: "" },
+  { kind: "event", text: "event: task" },
+  { kind: "data", text: 'data: {"id":"extract:h2-fema-letter","agent":"Evidence Agent","label":"Reading FEMA_Letter_Oct30.pdf","status":"started","via":"claude"}' },
+  { kind: "note", text: ": …the other papers start in the same instant" },
+  { kind: "gap", text: "" },
+  { kind: "event", text: "event: task" },
+  { kind: "data", text: 'data: {"id":"extract:h2-fema-letter","agent":"Evidence Agent","label":"Reading FEMA_Letter_Oct30.pdf","status":"started","via":"rules"}' },
+  { kind: "note", text: ": same task announced again, now read by rules: Claude was too slow" },
+  { kind: "gap", text: "" },
+  { kind: "event", text: "event: state" },
+  { kind: "data", text: 'data: {"extractions":[{"docId":"h2-roof-photo","method":"claude", …}]}' },
+  { kind: "gap", text: "" },
+  { kind: "note", text: ": keep-alive" },
+  { kind: "gap", text: "" },
+  { kind: "event", text: "event: done" },
+  { kind: "data", text: 'data: {"state":{ … },"extraction":{"claude":5,"rules":1,"fellBack":1,"mode":"mixed"}}' },
+];
+
+export const TRACES: Record<Lang, Trace> = {
+  en: {
+    title: "Capture 1. A run, as it arrives in the browser",
+    window: "text/event-stream · trimmed",
+    lines: TRACE_LINES,
+    note: "Five kinds of frame: task (a step started or finished), agent (one activity-log line), state (the slice a step just produced), done (the final state, the one to trust) and error. It is a POST, so the browser reads the stream itself instead of using EventSource. The numbers in the last frame are an example.",
+  },
+  es: {
+    title: "Captura 1. Una corrida, tal como llega al navegador",
+    window: "text/event-stream · recortado",
+    lines: TRACE_LINES.map((l) => (
+      l.text.startsWith(": …the other") ? { ...l, text: ": …los demás papeles empiezan en el mismo instante" }
+      : l.text.startsWith(": same task") ? { ...l, text: ": la misma tarea anunciada de nuevo, ahora leída con reglas: Claude tardó demasiado" }
+      : l
+    )),
+    note: "Cinco tipos de mensaje: task (un paso empezó o terminó), agent (una línea del registro), state (la parte que un paso acaba de producir), done (el estado final, el que vale) y error. Es un POST, así que el navegador lee la transmisión por sí mismo en vez de usar EventSource. Los números del último mensaje son un ejemplo.",
+  },
+};
+
+
 const en: Article = {
   masthead: ["BayouBridge Houston", "The Details", "November 2026"],
   title: "Under the Hood",
@@ -219,6 +358,18 @@ const en: Article = {
       paragraphs: [
         "In the example, FEMA turned the family down because it couldn't verify they lived in the home. The appeal needs four documents and has three, so it sits at 75 percent. The voice note mentions that September's electric bill is in an email, so that becomes the one question to ask.",
         "When the bill arrives only the bill is read; the other six papers are reused from the last run. A bill counts as proof of occupancy only if its service address matches the damaged home and its billing period ends before the earliest date of loss any document gives. September 30 comes before October 9, the address matches, and the appeal moves to 100 percent and becomes a draft waiting for approval. A bill for a different street, or one dated after the storm, is rejected with the reason shown.",
+      ],
+    },
+    {
+      heading: "How do the agents work together?",
+      dag: DAGS.en,
+      flow: STEP_FLOW.en,
+      trace: TRACES.en,
+      paragraphs: [
+        "There is no manager model deciding who goes next. The coordinator is a small scheduler: a list of tasks, each naming the tasks it depends on. It starts everything that is ready at once, waits for that wave to settle, and looks again. Reading the papers is wave one, and because each paper is independent, all of them start in the same instant.",
+        "Between waves the only thing shared is one case record. Each task reads what earlier tasks wrote, fills in its own slice (readings, people, needs, matches, plan, drafts) and publishes just that slice, so the screen updates the moment a step finishes instead of at the end. Every step also writes a line to the activity log, and those same lines move the characters in the office.",
+        "A step that fails does not stop the run. Steps with a safe default carry on with it and add a warning. Steps with no safe guess are marked failed and everything that depends on them is skipped, with a log line that says why. A task that can never start, because something it needs is missing, is caught instead of waited on forever.",
+        "The browser follows along over server-sent events, so there is no polling and no WebSocket. Log lines are spaced at least a quarter of a second apart, so a run that finishes in milliseconds is still watchable; real Claude delays are never padded. A keep-alive goes out every ten seconds, and if the browser disconnects, an abort signal cancels any Claude call still in flight.",
       ],
     },
     {
@@ -361,6 +512,18 @@ const es: Article = {
       paragraphs: [
         "En el ejemplo, FEMA rechazó a la familia porque no pudo comprobar que vivían en la casa. La apelación necesita cuatro documentos y tiene tres: está al 75 por ciento. La nota de voz menciona que la factura de luz de septiembre está en un correo, así que esa es la pregunta.",
         "Cuando llega la factura, solo se lee la factura; los otros seis papeles se reutilizan. Una factura sirve como prueba solo si la dirección coincide con la casa dañada y el periodo termina antes de la primera fecha del daño. El 30 de septiembre es antes del 9 de octubre, la dirección coincide y la apelación pasa al 100 por ciento, lista para su aprobación. Una factura de otra calle, o posterior a la tormenta, se rechaza mostrando la razón.",
+      ],
+    },
+    {
+      heading: "¿Cómo trabajan juntos los agentes?",
+      dag: DAGS.es,
+      flow: STEP_FLOW.es,
+      trace: TRACES.es,
+      paragraphs: [
+        "No hay un modelo jefe que decida quién sigue. El coordinador es un planificador pequeño: una lista de tareas, cada una con las tareas de las que depende. Arranca todo lo que está listo a la vez, espera a que esa ola termine y vuelve a mirar. Leer los papeles es la primera ola, y como cada papel es independiente, todos empiezan en el mismo instante.",
+        "Entre olas lo único compartido es un expediente del caso. Cada tarea lee lo que escribieron las anteriores, completa su parte (lecturas, personas, necesidades, coincidencias, plan, borradores) y publica solo esa parte, así la pantalla se actualiza en cuanto termina un paso y no al final. Cada paso también escribe una línea en el registro de actividad, y esas mismas líneas mueven a los personajes de la oficina.",
+        "Un paso que falla no detiene la corrida. Los pasos con un valor seguro siguen con él y agregan un aviso. Los pasos que no se pueden adivinar se marcan como fallidos y todo lo que depende de ellos se omite, con una línea del registro que explica por qué. Una tarea que nunca puede empezar, porque le falta algo, se detecta en lugar de esperarla para siempre.",
+        "El navegador sigue la corrida con eventos enviados por el servidor, sin sondeos ni WebSocket. Las líneas del registro se separan al menos un cuarto de segundo, para que una corrida que termina en milisegundos se pueda ver; las demoras reales de Claude nunca se rellenan. Cada diez segundos sale una señal de vida, y si el navegador se desconecta, una señal de aborto cancela cualquier llamada a Claude en curso.",
       ],
     },
     {

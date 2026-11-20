@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LANDING, type Lang } from "./strings";
-import LogoMark from "@/components/site/LogoMark";
+import Image from "next/image";
 
 // Floating pill navigation. Wide at the top of the page; once you scroll it
 // shrinks to a compact pill (logo, language, Start), and grows back on hover/focus.
@@ -25,7 +25,7 @@ export default function Nav({ lang, onLang, base = "" }: { lang: Lang; onLang: (
       style={{ top: "calc(var(--frame) + 12px)" }}
       className={`fixed left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-night/75 p-1.5 text-cream shadow-[0_10px_40px_rgb(0_0_0/0.35)] backdrop-blur-md transition-[width,background-color] duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${compact ? "w-[min(360px,calc(100%-2*var(--frame)-24px))]" : "w-[min(1040px,calc(100%-2*var(--frame)-24px))]"}`}>
       <Link href={`${base}/#top`} className="flex shrink-0 items-center gap-2 rounded-full pr-1 focus-visible:outline-2 focus-visible:outline-tide">
-        <LogoMark size={28} className="shrink-0" />
+        <Image src="/logo.png" alt="" width={28} height={28} className="size-7 shrink-0" />
         <span className={`overflow-hidden whitespace-nowrap text-sm font-semibold tracking-tight transition-[max-width,opacity] duration-500 ${compact ? "max-w-0 opacity-0 sm:max-w-[120px] sm:opacity-100" : "max-w-[120px]"}`}>BayouBridge</span>
       </Link>
       <div className={`hidden items-center overflow-hidden whitespace-nowrap text-sm text-cream/60 transition-[max-width,opacity] duration-500 md:flex ${compact ? "max-w-0 opacity-0" : "ml-2 max-w-[480px] opacity-100"}`}>
