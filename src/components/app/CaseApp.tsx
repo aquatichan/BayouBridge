@@ -10,6 +10,7 @@ import { OfficeDirector } from "@/lib/office/director";
 import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import CasePanel from "./CasePanel";
 import { Consent, Home, Upload, Welcome } from "./Onboarding";
+import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
 // The consumer app: welcome → consent → your home → upload → the office.
@@ -232,7 +233,7 @@ export default function CaseApp({ start = "welcome" }: { start?: CaseAppStart })
       setEvents((x) => [...x, ...d.events]);
       setOutbox((o) => (o.some((x) => x.id === d.item.id) ? o : [...o, d.item]));
     } catch (e) {
-      setApproveError(`${task.title}: ${(e as Error).message}`);
+      setApproveError(`${tr(task.title, lang)}: ${(e as Error).message}`);
     } finally { setApproving(null); }
   }
 

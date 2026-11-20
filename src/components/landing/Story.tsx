@@ -8,6 +8,7 @@ import type { MascotId, OfficeDirector, OfficeSnapshot, StationId } from "@/lib/
 import type { CaseState } from "@/lib/types";
 import SpotlightCard from "@/components/bits/SpotlightCard";
 import BlurText from "@/components/bits/BlurText";
+import { tr } from "@/lib/es";
 import { LANDING, type Lang } from "./strings";
 
 // Section 2. A card slides up over the hero and sticks while you scroll through
@@ -208,7 +209,7 @@ function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
           <ul className="space-y-1.5 text-sm">
             {before.plan.slice(0, 3).map((task) => (
               <li key={task.id} className="flex items-center justify-between gap-3">
-                <span className="line-clamp-1 text-cream/80">{task.title}</span>
+                <span className="line-clamp-1 text-cream/80">{tr(task.title, lang)}</span>
                 <span className="shrink-0 text-xs font-medium text-tide">{t.owners[task.owner] ?? task.owner}</span>
               </li>
             ))}
@@ -222,7 +223,7 @@ function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
           <ul className="space-y-1 text-sm">
             {before.packets.slice(0, 2).map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3">
-                <span className="line-clamp-1 text-cream/80">{p.title.replace(/: packet$/, "")}</span>
+                <span className="line-clamp-1 text-cream/80">{tr(p.title.replace(/: packet$/, ""), lang)}</span>
                 <span className="shrink-0 text-xs text-cream/60">{t.attachments(p.attachments.length)}</span>
               </li>
             ))}
@@ -234,8 +235,8 @@ function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
       return (
         <>
           {head(<Badge tone="plain">{t.steps.missing.badge}</Badge>)}
-          <p className="line-clamp-1 text-sm text-cream">{fema?.blockedBy[0] ?? "—"}</p>
-          <p className="line-clamp-2 text-sm leading-relaxed text-cream/60">{before.followUp?.[lang] ?? (fema ? t.blocks(fema.name) : "")}</p>
+          <p className="line-clamp-1 text-sm text-cream">{fema?.blockedBy[0] ? tr(fema.blockedBy[0], lang) : "—"}</p>
+          <p className="line-clamp-2 text-sm leading-relaxed text-cream/60">{before.followUp?.[lang] ?? (fema ? t.blocks(tr(fema.name, lang)) : "")}</p>
         </>
       );
     case "unblocked": {
@@ -250,7 +251,7 @@ function Card({ step, t, lang, before, fema, femaAfter, unblocked }: {
             </div>
             <span className={`text-sm font-semibold tabular-nums ${unblocked ? "text-sun" : "text-cream/60"}`}>{pct}%</span>
           </div>
-          {unblocked && femaAfter && <p className="mt-1 line-clamp-1 text-sm text-cream">{t.ready(femaAfter.name)}</p>}
+          {unblocked && femaAfter && <p className="mt-1 line-clamp-1 text-sm text-cream">{t.ready(tr(femaAfter.name, lang))}</p>}
         </>
       );
     }

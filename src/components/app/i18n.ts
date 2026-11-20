@@ -141,7 +141,7 @@ const es: Strings = {
   deleteConfirm: "¿Borrar este caso y todos los archivos que agregó? No se puede deshacer.",
   warnings: "Algunas cosas necesitan su atención",
   latest: "Último",
-  minutes: (m: number) => `${m} minutos de papeleo hechos por usted`,
+  minutes: (m: number) => `${m} minutos de papeleo que hicimos por usted`,
   extraction: "Leído por",
   error: "Algo salió mal",
 };
