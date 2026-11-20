@@ -39,7 +39,7 @@ Normalization rules for "normalized":
 - need: "medical_power" or "food_loss". For medical_power, "value" is the equipment, then who uses it in parentheses: their first name and age if stated, else their relation, e.g. "CPAP machine (Ruth, 78)" or "CPAP machine (husband)"
 - determination: "fema_ineligible_info" for a FEMA insufficient-information decision, "missing:proof_of_occupancy" if occupancy could not be verified
 - exclusion: "flood_excluded" if flood damage is excluded
-- mentions_evidence: "has:<evidence_type>" if the person says they have a document they did not upload, "absent:<evidence_type>" if they say they do not have it. Evidence types: proof_of_occupancy, loss_receipts, proof_of_identity, medical_need_documentation, insurance_policy, fema_determination
+- mentions_evidence: "has:<evidence_type>" if the person says they have a document they did not upload, "absent:<evidence_type>" if they say they do not have it. Evidence types: proof_of_occupancy, loss_receipts, proof_of_identity, medical_need_documentation, insurance_policy, fema_determination, proof_of_ownership
 - person: "role:<relation>" for a relative of the main applicant (relation: mother, father, husband, wife, son, daughter, grandmother, grandfather), or "" for the main applicant. Put their age in the value as "Name (age N)" when stated
 - tenure: "renter" if the household rents the damaged home, "owner" if they own it
 - billing_period: "billing_end:YYYY-MM-DD", the last day of a bill's or bank statement's period

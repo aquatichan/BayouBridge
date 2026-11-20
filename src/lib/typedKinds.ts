@@ -77,6 +77,7 @@ export const KIND_FOR_EVIDENCE: Record<EvidenceType, TypedKind> = {
   insurance_policy: "insurance_policy",
   proof_of_occupancy: "utility_bill",
   proof_of_identity: "id_card",
+  proof_of_ownership: "deed",
   loss_statement: "other",
   loss_receipts: "receipt",
   medical_need_documentation: "medical_letter",

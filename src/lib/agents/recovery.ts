@@ -99,10 +99,13 @@ function member(ctx: CaseContext): string {
 function roleOf(f: Fact, facts: Fact[]): string {
   const relation = f.normalized ? RELATION[f.normalized] : undefined;
   if (!relation) return "Head of household";
+  // Claude's unnamed relative ("Husband"): the name already says the relation, so the role says the rest.
+  const unnamed = f.value.trim().toLowerCase() === relation.toLowerCase();
   const age = f.value.match(/\(age (\d+)\)/)?.[1] ?? f.quote.match(/\b(?:tiene|is|aged?)\s+(\d{1,3})\b/i)?.[1];
   const need = medicalFactFor(f, facts);
   const equipment = need ? lowerFirst(equipmentOf(need)) : undefined;
-  return [relation, age, equipment && `uses ${EQUIPMENT_SHORT[equipment] ?? equipment}`].filter(Boolean).join(", ");
+  const rest = [age, equipment && `uses ${EQUIPMENT_SHORT[equipment] ?? equipment}`].filter(Boolean);
+  return (unnamed ? ["Household member", ...rest] : [relation, ...rest]).join(", ");
 }
 
 export function resolvePeople(ex: ExtractionResult[]): { people: Person[]; aliasNotes: string[] } {
@@ -363,6 +366,10 @@ function questionFor(type: EvidenceType, ctx: CaseContext, hint?: string): { en:
 }
 
 const QUESTIONS: Partial<Record<EvidenceType, { en: string; es: string }>> = {
+  proof_of_ownership: {
+    en: "Do you have your deed, a mortgage statement or a property tax bill for the home? FEMA asks owners to show the home is theirs.",
+    es: "¿Tiene la escritura, un estado de hipoteca o un recibo del impuesto de la propiedad? FEMA pide a los dueños que demuestren que la casa es suya.",
+  },
   damage_photo: {
     en: "Can you take a few photos of the damage? Wide shots of each room and close-ups of the roof, ceiling and floors help most.",
     es: "¿Puede tomar unas fotos de los daños? Sirven más las fotos de cada cuarto completo y de cerca del techo, el cielo raso y los pisos.",

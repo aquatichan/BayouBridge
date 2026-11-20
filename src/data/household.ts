@@ -159,4 +159,18 @@ Electricity used: 1,186 kWh
 Amount due: $162.40
 Payment due: October 24, 2026`,
   },
+  {
+    id: "doc-reyes-deed",
+    kind: "deed",
+    title: "Mortgage statement",
+    filename: "Mortgage_Statement_Sep.pdf",
+    mime: "application/pdf",
+    receivedAt: "2026-11-18",
+    language: "en",
+    text: `FIRST BAYOU MORTGAGE (fictional) — Monthly statement (synthetic sample)
+Borrower: Ana Reyes
+Property: 1847 Cypress Bayou Ln, Houston, TX 77093
+Statement date: September 20, 2026
+Payment due: October 1, 2026`,
+  },
 ];

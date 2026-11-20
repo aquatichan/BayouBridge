@@ -73,7 +73,7 @@ test("a Claude reading of a photographed bill becomes the document, and proves o
   assert.equal(reading.document?.kind, "utility_bill");
   const s = await runCase({
     caseId: "t", householdName: "Reyes household", address: "1847 Cypress Bayou Ln, Houston, TX 77093", disaster: "", today: "2026-11-18",
-    documents: [...sample, upload],
+    documents: [...sample, upload, { ...sample[0], id: "deed", kind: "deed" as const, title: "Mortgage statement", filename: "m.pdf", text: "Borrower: Ana Reyes\nProperty: 1847 Cypress Bayou Ln" }],
     extractor: async (d) => (d.id === "up-1" ? reading : (await import("../src/lib/agents/evidence")).extractWithRules(d)),
   });
   assert.equal(s.documents.find((d) => d.id === "up-1")?.title, "September electric bill");
@@ -94,7 +94,7 @@ test("sample cases are private copies: approvals in one don't show up in another
   const b = (await newCase({ sample: true })).body.caseId;
   const sa = await runSessionCase(a);
   await runSessionCase(b);
-  assert.equal(sa.matches.find((m) => m.programId === "fema-appeal")?.readiness, 0.75);
+  assert.equal(sa.matches.find((m) => m.programId === "fema-appeal")?.readiness, 0.5);
   const r = await approve(new Request("http://test/api/approve", { method: "POST", body: JSON.stringify({ caseId: a, taskId: "task:insurance-claim" }) }));
   assert.equal((await r.json()).item.approvedBy, "You");
   assert(!storeGet(b)!.state!.plan.find((t) => t.id === "task:insurance-claim")?.approved);

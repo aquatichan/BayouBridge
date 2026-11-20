@@ -47,6 +47,7 @@ test("a whole case typed in, offline: the FEMA appeal reaches 100% and is ready 
       { kind: "fema_letter", text: "Letter dated October 30, 2026. Registration 4417-22-0091. Decision: ineligible, FEMA could not verify that I lived at the home." },
       { kind: "utility_bill", text: "CenterPoint electric bill. Service address 2210 Telephone Rd. Billing period September 1 to September 30, 2026." },
       { kind: "photo", text: "Photo of the roof: missing shingles and exposed decking. Water stain on the living room ceiling." },
+      { kind: "deed", text: "Warranty deed for 2210 Telephone Rd, Houston, TX 77023, granted to the household." },
       { kind: "estimate", text: "Gulf Coast Roofing estimate: replace roof and living room drywall. Total $11,250." },
     ],
   });

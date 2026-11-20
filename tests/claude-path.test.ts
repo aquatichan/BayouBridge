@@ -16,7 +16,7 @@ test("a hanging Claude call times out, falls back to rules, and is aborted", asy
   assert(s.extractions.every((e) => e.method === "rules"));
   assert(s.events.some((e) => e.action === "Fell back to rules" && e.detail.includes("timeout")));
   assert(signals.every((sig) => sig.aborted), "every in-flight request was cancelled");
-  assert.equal(s.matches.find((m) => m.programId === "fema-appeal")!.readiness, 0.75);
+  assert.equal(s.matches.find((m) => m.programId === "fema-appeal")!.readiness, 0.5);
   assert.deepEqual(s.extraction, { claude: 0, rules: 6, fellBack: 6, mode: "rules" });
 });
 
@@ -70,7 +70,7 @@ test("Claude returning nothing usable falls back with reason 'validation'", asyn
   assert.throws(() => fromClaudeOutput(doc("doc-estimate"), []), /no facts/);
   const s = await runCase({ ...base, limits: fast, extractor: async (d) => fromClaudeOutput(d, []) });
   assert(s.events.some((e) => e.action === "Fell back to rules" && e.detail.includes("validation")));
-  assert.equal(s.matches.find((m) => m.programId === "fema-appeal")!.readiness, 0.75);
+  assert.equal(s.matches.find((m) => m.programId === "fema-appeal")!.readiness, 0.5);
 });
 
 test("Claude path with rules-equivalent facts is deep-equal to the rules-only run", async () => {

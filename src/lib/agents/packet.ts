@@ -22,7 +22,7 @@ const onBehalfEn = (name: string) =>
   /^(your household|su hogar)$/i.test(name) ? "the household" : /\bhousehold$/i.test(name) ? `the ${name}` : name;
 
 export function buildPacket(
-  match: ProgramMatch, state: Pick<CaseState, "documents" | "extractions" | "needs" | "householdName" | "address">,
+  match: ProgramMatch, state: Pick<CaseState, "documents" | "extractions" | "needs" | "householdName" | "address" | "disaster">,
   /** Who approves it: a navigator (default) or, in the app, the household itself. */
   approver: "navigator" | "household" = "navigator",
 ): Packet {
@@ -56,6 +56,15 @@ export function buildPacket(
   const due = match.deadline ? ` The deadline we have on file is ${match.deadline.date}.` : "";
   const dueEs = match.deadline ? ` La fecha límite que tenemos es ${match.deadline.date}.` : "";
 
+  // A FEMA appeal is a signed letter with the registration and disaster numbers, the reason, and what is enclosed.
+  const fact = (type: string, label?: string) => state.extractions.flatMap((e) => e.facts).find((f) => f.type === type && (!label || f.label === label));
+  const letter = match.programId === "fema-appeal" ? femaLetter({
+    registration: fact("fema_registration")?.value, disaster: state.disaster.match(/DR-\d+-[A-Z]{2}/)?.[0],
+    applicant: fact("person", "Person named")?.value ?? state.householdName.replace(/ household$/i, ""),
+    address: state.address, letterDate: fact("deadline", "Letter date (appeal clock starts)")?.value,
+    deadline: match.deadline?.date, encl: titles,
+  }) : undefined;
+
   return {
     id: `packet:${match.programId}`,
     programId: match.programId,
@@ -69,5 +78,17 @@ export function buildPacket(
       es: `Para ${tr(to, "es")}: en nombre ${onBehalfEs(state.householdName)} en ${state.address}, enviamos ${attachments.length} documento${attachments.length === 1 ? "" : "s"} para ${tr(match.name, "es")}: ${list(titles.map((x) => tr(x, "es")), "y")}.${dueEs} Avísenos si necesita algo más. ${approver === "household" ? "Preparado con BayouBridge y aprobado por la familia antes de enviarlo." : "Preparado por un navegador comunitario de recuperación y revisado antes de enviar."}`,
     },
     status: "draft",
+    ...(letter ? { letter } : {}),
+  };
+}
+
+/** The draft appeal letter. FEMA asks for it signed, within 60 days, naming the registration and disaster numbers. */
+function femaLetter(x: { registration?: string; disaster?: string; applicant: string; address: string; letterDate?: string; deadline?: string; encl: string[] }) {
+  const reg = x.registration ?? "[registration number]", dis = x.disaster ?? "[disaster number]";
+  const list = x.encl.map((t) => `  - ${t}`).join("\n");
+  const listEs = x.encl.map((t) => `  - ${tr(t, "es")}`).join("\n");
+  return {
+    en: `Federal Emergency Management Agency\nRE: Appeal of eligibility decision${x.letterDate ? ` dated ${x.letterDate}` : ""}\nRegistration number: ${reg}\nDisaster number: ${dis}\nDamaged home: ${x.address}\n\nTo whom it may concern:\n\nI am appealing the decision on my application. I lived in this home as my primary residence when the disaster struck, and I am enclosing documents that show it.\n\nEnclosed:\n${list}\n\n${x.deadline ? `I am sending this before the appeal deadline of ${x.deadline}.\n\n` : ""}Sincerely,\n\n______________________  (signature)\n${x.applicant}\nDate: ______________  Phone: ______________`,
+    es: `Agencia Federal para el Manejo de Emergencias (FEMA)\nREF: Apelación de la decisión de elegibilidad${x.letterDate ? ` con fecha ${x.letterDate}` : ""}\nNúmero de registro: ${reg}\nNúmero de desastre: ${dis}\nCasa dañada: ${x.address}\n\nA quien corresponda:\n\nApelo la decisión sobre mi solicitud. Vivía en esta casa como mi residencia principal cuando ocurrió el desastre y adjunto documentos que lo demuestran.\n\nAdjuntos:\n${listEs}\n\n${x.deadline ? `Envío esta carta antes de la fecha límite de apelación, ${x.deadline}.\n\n` : ""}Atentamente,\n\n______________________  (firma)\n${x.applicant}\nFecha: ______________  Teléfono: ______________`,
   };
 }

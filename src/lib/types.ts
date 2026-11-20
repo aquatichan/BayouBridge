@@ -31,6 +31,7 @@ export type EvidenceType =
   | "insurance_policy"
   | "proof_of_occupancy"
   | "proof_of_identity"
+  | "proof_of_ownership"
   | "loss_statement"
   | "loss_receipts"
   | "medical_need_documentation";
@@ -182,6 +183,8 @@ export interface Packet {
   citations: { factId: string; quote: string; docId: string }[];
   /** Cover note in English, plus Spanish so the household can read what is sent for them. */
   bilingualCover: { en: string; es: string };
+  /** For a FEMA appeal: the draft letter with what FEMA asks an appeal to contain. */
+  letter?: { en: string; es: string };
   status: "draft" | "approved" | "queued";
 }
 

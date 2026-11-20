@@ -1,9 +1,15 @@
 import { extractionLabel } from "../src/lib/labels";
+import { isDemoId } from "../src/data/demoList";
+import { createSampleCase, runSessionCase } from "../src/lib/cases";
 import { runDemoCase } from "../src/lib/runDemo";
 
-// Same path as POST /api/run: Claude extraction when ANTHROPIC_API_KEY is set, rules otherwise.
+// Usage: npx tsx scripts/run-demo.ts [reyes|johnson|nguyen]
+// Reyes takes the same path as POST /api/run (Claude when ANTHROPIC_API_KEY is set, rules otherwise).
+// Johnson and Nguyen run as sample cases, which are always read by the rules engine.
+const which = process.argv[2] ?? "reyes";
+if (!isDemoId(which)) { console.error(`Unknown household "${which}". Use reyes, johnson or nguyen.`); process.exit(1); }
 const started = Date.now();
-runDemoCase()
+(which === "reyes" ? runDemoCase() : runSessionCase(createSampleCase("en", which)))
   .then((s) => {
     for (const e of s.events) console.log(`[${e.agent}] ${e.action}: ${e.detail}`);
     console.log("\nPEOPLE", s.people);
