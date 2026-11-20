@@ -5,6 +5,7 @@ import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import type { ActivityEvent, CaseDocument, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import { KIND_FOR_EVIDENCE } from "@/lib/typedKinds";
 import { DropZone, FilePicker, TypedDocEditor, type TypedDoc } from "./Onboarding";
+import { Folder, PaperSheet } from "./Papers";
 import { tr } from "@/lib/es";
 import { STRINGS, type Lang } from "./i18n";
 
@@ -219,15 +220,16 @@ function useTray(props: { s: CaseState | null; lang: Lang; papers: Paper[]; runn
     <div className="rounded-2xl border border-amber/40 bg-amber-soft/30 p-3">
       <h3 className="text-sm font-semibold text-ink">🗂️ {t.trayTitle}</h3>
       <p className="mt-0.5 text-[11px] text-muted">{t.trayBody}</p>
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {papers.map((p) => (
-          <li key={p.key}>
-            <button type="button" draggable={!running} disabled={running} aria-pressed={picked === p.key}
+      <ul className="-mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1 pt-3 [scrollbar-width:thin]">
+        {papers.map((p, i) => (
+          <li key={p.key} className="shrink-0">
+            <button type="button" draggable={!running} disabled={running} aria-pressed={picked === p.key} aria-label={p.title}
               onDragStart={(e) => { e.dataTransfer.setData(PAPER_MIME, p.key); e.dataTransfer.effectAllowed = "copy"; setPicked(p.key); }}
               onDragEnd={() => setOver(null)}
               onClick={() => setPicked((k) => (k === p.key ? null : p.key))}
-              className={`cursor-grab rounded-xl border px-2.5 py-1.5 text-xs font-medium shadow-sm transition active:cursor-grabbing disabled:opacity-50 ${picked === p.key ? "border-tide bg-tide text-night" : "border-line bg-panel text-ink hover:border-tide/60"}`}>
-              <span aria-hidden>{p.icon}</span> {p.title}
+              className="group flex w-[84px] cursor-grab flex-col items-center gap-1 rounded-xl p-1 text-center outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-tide disabled:opacity-50">
+              <span className="transition-transform group-hover:-translate-y-1"><PaperSheet icon={p.icon} seed={i + 1} lifted={picked === p.key} /></span>
+              <span className={`line-clamp-2 text-[10px] font-medium leading-tight ${picked === p.key ? "text-tide" : "text-ink"}`}>{p.title}</span>
             </button>
           </li>
         ))}
@@ -339,9 +341,18 @@ function NextSteps({ s, events, running, lang, sample, papers, approving, approv
                 ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-night">{t.approved}</span>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}
                   className="mt-2 rounded-full border border-tide/60 px-3 py-1 text-xs font-semibold text-tide hover:bg-tide hover:text-night disabled:opacity-50">{t.approve}</button>)}
-              {drop && !drop.feedback && (drop.picked
-                ? <button onClick={drop.attachPicked} disabled={running} className="mt-2 rounded-full bg-amber px-3 py-1 text-xs font-semibold text-night disabled:opacity-50">📎 {t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "")}</button>
-                : <p className="mt-2 text-[11px] font-medium text-amber">⬇ {t.dropPaper}</p>)}
+              {drop && !drop.feedback && (
+                <div className="mt-2 flex items-center gap-3">
+                  <button type="button" onClick={drop.attachPicked} disabled={running || !drop.picked}
+                    aria-label={drop.picked ? t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "") : t.dropPaper}
+                    className={`rounded-lg transition ${drop.picked ? "animate-pulse cursor-pointer" : "cursor-default"}`}>
+                    <Folder programId={task.id.startsWith("task:collect:") ? undefined : task.programId} open={drop.active || !!drop.picked} />
+                  </button>
+                  {drop.picked
+                    ? <button onClick={drop.attachPicked} disabled={running} className="rounded-full bg-amber px-3 py-1 text-xs font-semibold text-night disabled:opacity-50">📎 {t.attachHere(papers.find((p) => p.key === drop.picked)?.title ?? "")}</button>
+                    : <p className="text-[11px] font-medium text-amber">{t.dropPaper}</p>}
+                </div>
+              )}
               {drop?.feedback && (
                 <p role="status" className={`mt-2 rounded-lg px-2 py-1.5 text-xs ${drop.feedback.ok ? "bg-moss/20 text-ink" : "bg-clay-soft text-clay"}`}>
                   {drop.feedback.ok ? "✓ " : ""}{drop.feedback.text}
