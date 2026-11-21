@@ -13,7 +13,7 @@ import type { Lang } from "./i18n";
 const T = {
   en: {
     ready: "ready", stepsDone: (a: number, b: number) => `${a} of ${b} steps done`, nextUp: "Next up", show: "Show me",
-    dropFirst: (h: string) => `Drop the ${h}'s papers into BayouBridge`, findIt: "Find the paper the helpers asked for and drop it in",
+    dropRest: (n: number) => `Drop the ${n === 1 ? "last paper" : `other ${n} papers`} in the pile too`, dropFirst: (h: string) => `Drop the ${h}'s papers into BayouBridge`, findIt: "Find the paper the helpers asked for and drop it in",
     addIt: (l: string) => `Add: ${l}`, answer: (q: string) => `Answer: ${q}`, approveIt: (x: string) => `Review and approve: ${x}`,
     exportIt: "Every step is done. Download the recovery package", deadlines: "Deadlines", today: "Today",
     inDays: (n: number) => (n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`), ago: (n: number) => `${n} days ago`, sent: "approved",
@@ -24,7 +24,7 @@ const T = {
   },
   es: {
     ready: "listo", stepsDone: (a: number, b: number) => `${a} de ${b} pasos listos`, nextUp: "Lo siguiente", show: "Muéstreme",
-    dropFirst: (h: string) => `Ponga los papeles del ${h.replace(/ household$/i, "")} en BayouBridge`, findIt: "Busque el papel que pidieron los ayudantes y póngalo",
+    dropRest: (n: number) => `Ponga también ${n === 1 ? "el último papel" : `los otros ${n} papeles`} del montón`, dropFirst: (h: string) => `Ponga los papeles de ${/ household$/i.test(h) ? `la familia ${h.replace(/ household$/i, "")}` : "la familia"} en BayouBridge`, findIt: "Busque el papel que pidieron los ayudantes y póngalo",
     addIt: (l: string) => `Agregue: ${l}`, answer: (q: string) => `Conteste: ${q}`, approveIt: (x: string) => `Revise y apruebe: ${x}`,
     exportIt: "Todos los pasos están listos. Descargue el paquete de recuperación", deadlines: "Fechas límite", today: "Hoy",
     inDays: (n: number) => (n === 0 ? "hoy" : n === 1 ? "mañana" : `en ${n} días`), ago: (n: number) => `hace ${n} días`, sent: "aprobado",
@@ -81,6 +81,7 @@ export function flash(id: string) {
 
 export function ProgressRing({ s, lang }: { s: CaseState; lang: Lang }) {
   const t = T[lang];
+  if (!s.matches.length) return null; // nothing to measure yet: "100% ready" would be a lie
   const pct = s.evidenceScore;
   const done = s.plan.filter((x) => x.status === "done" || x.approved).length;
   const r = 26, c = 2 * Math.PI * r;
@@ -102,8 +103,8 @@ export function ProgressRing({ s, lang }: { s: CaseState; lang: Lang }) {
 
 // ── Next up ─────────────────────────────────────────────────────────────────
 
-export function NextUp({ s, lang, sample, hasPile, laterInPile, household, running }: {
-  s: CaseState | null; lang: Lang; sample: boolean; hasPile: boolean; laterInPile: boolean; household: string; running: boolean;
+export function NextUp({ s, lang, sample, hasPile, laterInPile, startLeft, household, running }: {
+  s: CaseState | null; lang: Lang; sample: boolean; hasPile: boolean; laterInPile: boolean; startLeft: number; household: string; running: boolean;
 }) {
   const t = T[lang];
   if (running) return null;
@@ -113,7 +114,8 @@ export function NextUp({ s, lang, sample, hasPile, laterInPile, household, runni
     const conflict = s.conflicts.find((c) => !c.resolved);
     const toApprove = s.plan.find((x) => x.status === "needs_approval" && !x.approved);
     const allDone = s.plan.length > 0 && s.plan.every((x) => x.status === "done" || x.approved) && s.matches.every((m) => m.readiness === 1);
-    if (s.followUp && sample && laterInPile) { text = t.findIt; target = "bb-pile"; }
+    if (sample && startLeft > 0) { text = t.dropRest(startLeft); target = "bb-pile"; }
+    else if (s.followUp && sample && laterInPile) { text = t.findIt; target = "bb-pile"; }
     else if (s.followUp && !sample) { text = t.addIt(tr(s.matches.flatMap((m) => m.evidence).find((e) => e.type === s.followUp!.evidence)?.label ?? "", lang)); target = "bb-followup"; }
     else if (conflict) { text = t.answer(conflict.question[lang]); target = `bb-task-task:${conflict.id}`; }
     else if (toApprove) { text = t.approveIt(tr(toApprove.title, lang)); target = `bb-task-${toApprove.id}`; }
@@ -238,17 +240,17 @@ export function LiveFeed({ events, lang }: { events: ActivityEvent[]; lang: Lang
 
 export function RecoveryPackage({ s, outbox, events, lang }: { s: CaseState; outbox: OutboxItem[]; events: ActivityEvent[]; lang: Lang }) {
   const t = T[lang];
-  const open = () => {
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(recoveryHtml(s, outbox, events, lang));
-    w.document.close();
-    setTimeout(() => w.print(), 300);
-  };
   const download = () => {
     const url = URL.createObjectURL(new Blob([recoveryMarkdown(s, outbox, events, lang)], { type: "text/markdown;charset=utf-8" }));
     Object.assign(document.createElement("a"), { href: url, download: `recovery-package-${s.householdName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.md` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const open = () => {
+    const w = window.open("", "_blank");
+    if (!w) return download(); // pop-up blocked: save the Markdown instead of doing nothing
+    w.document.write(recoveryHtml(s, outbox, events, lang));
+    w.document.close();
+    setTimeout(() => w.print(), 300);
   };
   return (
     <div id="bb-export" className="mt-2 flex flex-wrap items-center gap-2">

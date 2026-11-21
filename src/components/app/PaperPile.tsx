@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { tr } from "@/lib/es";
 import type { CaseDocument } from "@/lib/types";
 import { STRINGS, type Lang } from "./i18n";
@@ -52,6 +52,8 @@ export default function PaperPile({ lang, title, body, papers, busy, queued, onD
   const t = STRINGS[lang];
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [over, setOver] = useState(false);
+  // Tapped (not dragged) papers light up the steps they would fill, for touch screens.
+  useEffect(() => { announceDrag(picked.size ? papers.filter((p) => picked.has(p.id)).map((p) => p.kind) : null); }, [picked, papers]);
   const drop = (ids: string[]) => {
     const ok = ids.filter((id) => papers.some((p) => p.id === id));
     if (!ok.length) return;

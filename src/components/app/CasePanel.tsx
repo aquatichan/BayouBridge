@@ -177,18 +177,18 @@ function PacketActions({ item, lang, s }: { item: OutboxItem; lang: Lang; s: Cas
   const t = STRINGS[lang];
   const household = s?.householdName ?? "";
   const docTitle = (id: string) => s?.documents.find((d) => d.id === id)?.title ?? id;
-  const open = (print: boolean) => {
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(packetHtml(item, lang, household, docTitle));
-    w.document.close();
-    if (print) setTimeout(() => w.print(), 300); // let the written document lay out first
-  };
   const download = () => {
     const url = URL.createObjectURL(new Blob([packetMarkdown(item, lang, household, docTitle)], { type: "text/markdown;charset=utf-8" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: packetFileName(item) });
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const open = (print: boolean) => {
+    const w = window.open("", "_blank");
+    if (!w) return download(); // pop-up blocked: save the Markdown instead of doing nothing
+    w.document.write(packetHtml(item, lang, household, docTitle));
+    w.document.close();
+    if (print) setTimeout(() => w.print(), 300); // let the written document lay out first
   };
   const btn = "rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-ink hover:border-tide/60 hover:text-tide";
   return (
@@ -213,7 +213,7 @@ function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPaper
   const total = s?.documents.length ?? 0;
   return (
     <>
-      <NextUp s={s} lang={lang} sample={sample} hasPile={!!pile?.papers.length} laterInPile={!!pile?.papers.some((p) => p.stage === "later")} household={householdName} running={running} />
+      <NextUp s={s} lang={lang} sample={sample} hasPile={!!pile?.papers.length} laterInPile={!!pile?.papers.some((p) => p.stage === "later")} startLeft={pile?.papers.filter((p) => p.stage === "start").length ?? 0} household={householdName} running={running} />
       {s && has("Scored evidence") && <ProgressRing s={s} lang={lang} />}
 
       {sample && pile && (

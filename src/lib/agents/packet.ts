@@ -1,7 +1,7 @@
 import { programs } from "@/data/resources";
 import type { CaseState, Need, Packet, ProgramMatch } from "@/lib/types";
 import { tr } from "@/lib/es";
-import { NEED_EVIDENCE, PROGRAM_NEEDS } from "./recovery";
+import { NEED_EVIDENCE, PROGRAM_NEEDS, sameName } from "./recovery";
 
 // Packet Agent: drafts what would be sent for a pathway whose evidence is
 // complete. Pure and deterministic. A packet only ever goes to the sandbox
@@ -26,6 +26,8 @@ export function buildPacket(
   match: ProgramMatch, state: Pick<CaseState, "documents" | "extractions" | "needs" | "householdName" | "address" | "disaster"> & Partial<Pick<CaseState, "people">>,
   /** Who approves it: a navigator (default) or, in the app, the household itself. */
   approver: "navigator" | "household" = "navigator",
+  /** What the household confirmed for each conflict, by conflict id. */
+  resolutions: Record<string, string> = {},
 ): Packet {
   const program = programs.find((p) => p.id === match.programId);
   const to = program?.agency ?? match.name;
@@ -59,17 +61,20 @@ export function buildPacket(
 
   // A FEMA appeal is a signed letter with the registration and disaster numbers, the reason, and what is enclosed.
   const fact = (type: string, label?: string) => state.extractions.flatMap((e) => e.facts).find((f) => f.type === type && (!label || f.label === label));
+  const applicant = resolutions["conflict-name"] ?? fact("person", "Person named")?.value ?? state.householdName.replace(/ household$/i, "");
+  const lossDate = resolutions["conflict-date-of-loss"] ?? fact("date_of_loss")?.value;
   const letter = match.programId === "fema-appeal" ? femaLetter({
     registration: fact("fema_registration")?.value, disaster: state.disaster.match(/DR-\d+-[A-Z]{2}/)?.[0],
-    applicant: fact("person", "Person named")?.value ?? state.householdName.replace(/ household$/i, ""),
+    applicant,
     address: state.address, letterDate: fact("deadline", "Letter date (appeal clock starts)")?.value,
     deadline: match.deadline?.date, encl: titles,
   }) : undefined;
   const form = letter ? occupancyDeclaration({
-    applicant: fact("person", "Person named")?.value ?? state.householdName.replace(/ household$/i, ""),
+    applicant,
     registration: fact("fema_registration")?.value, disaster: state.disaster.match(/DR-\d+-[A-Z]{2}/)?.[0],
-    address: state.address, lossDate: fact("date_of_loss")?.value,
-    members: (state.people ?? []).map((p) => p.name),
+    address: state.address, lossDate,
+    // The others in the home: not the applicant, and not a bare "Husband" placeholder name twice.
+    members: (state.people ?? []).map((p) => p.name).filter((n) => !sameName(n, applicant) && n !== applicant),
   }) : undefined;
 
   return {
