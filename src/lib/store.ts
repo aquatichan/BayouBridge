@@ -152,7 +152,7 @@ export function resolveConflict(caseId: string, conflictId: string, value: strin
   const seq = rec.state.events.length + rec.extraEvents.length;
   const events: ActivityEvent[] = [{
     seq: seq + 1, agent: "Evidence Agent", action: "Conflict resolved",
-    detail: `${conflict.field}: the household confirmed "${value}". Later drafts use it.`, minutesSaved: 3,
+    detail: `${conflict.field}: the household confirmed "${value}". It is used the next time the drafts are prepared.`, minutesSaved: 3,
   }];
   rec.extraEvents.push(...events);
   return { ok: true, state: rec.state, events };

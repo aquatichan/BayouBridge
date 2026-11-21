@@ -7,6 +7,8 @@ import { KIND_FOR_EVIDENCE } from "@/lib/typedKinds";
 import { DropZone, FilePicker, TypedDocEditor, type TypedDoc } from "./Onboarding";
 import PaperPile, { PaperThumb, type SamplePaper } from "./PaperPile";
 import { tr } from "@/lib/es";
+import { packetFileName, packetHtml, packetMarkdown } from "@/lib/packetDoc";
+import { EVIDENCE_OF as EVIDENCE_KINDS, DeadlineStrip, extrasText, LiveFeed, missingOf, NextUp, ProgressRing, RecoveryPackage, useDraggedEvidence, WhyBlocked } from "./Extras";
 import { STRINGS, type Lang } from "./i18n";
 
 // The results panel next to the office. It fills in as the agents finish.
@@ -35,6 +37,9 @@ export default function CasePanel(props: {
   /** Which extractor actually read the documents in the last run (null until a run finishes). */
   mode: ExtractionSummary | null; approving: string | null; approveError: string | null;
   onApprove: (t: PlanTask) => void; onUpload: (files: File[]) => void;
+  /** Approve every step that is ready, one after another. */
+  onApproveAll: () => void;
+  householdName: string;
   /** The household typed out a document. */
   onType: (d: TypedDoc) => void;
   /** Files are on their way to the server (before the agents start reading). */
@@ -153,8 +158,10 @@ export default function CasePanel(props: {
             <b className="text-sm">{tr(o.packet.title, lang)}</b>
             <div className="text-muted">{t.to} {tr(o.packet.to, lang)} · {o.packet.attachments.map((a) => tr(a.title, lang)).join(", ")}</div>
             <p className="mt-1.5 rounded-lg bg-bg p-2 leading-relaxed">{o.packet.bilingualCover[lang]}</p>
+            <PacketActions item={o} lang={lang} s={s} />
           </article>
         )) : <Waiting>{t.outboxEmpty}</Waiting>)}
+        {tab === "outbox" && s && outbox.length > 0 && <RecoveryPackage s={s} outbox={outbox} events={events} lang={lang} />}
 
 
         {running && tab !== "next" && <p className="text-center text-[11px] text-muted">{t.working}…</p>}
@@ -165,18 +172,55 @@ export default function CasePanel(props: {
 }
 
 
+/** Open an approved packet as a readable document, download it as Markdown, or print it to PDF. */
+function PacketActions({ item, lang, s }: { item: OutboxItem; lang: Lang; s: CaseState | null }) {
+  const t = STRINGS[lang];
+  const household = s?.householdName ?? "";
+  const docTitle = (id: string) => s?.documents.find((d) => d.id === id)?.title ?? id;
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([packetMarkdown(item, lang, household, docTitle)], { type: "text/markdown;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: packetFileName(item) });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const open = (print: boolean) => {
+    const w = window.open("", "_blank");
+    if (!w) return download(); // pop-up blocked: save the Markdown instead of doing nothing
+    w.document.write(packetHtml(item, lang, household, docTitle));
+    w.document.close();
+    if (print) setTimeout(() => w.print(), 300); // let the written document lay out first
+  };
+  const btn = "rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-ink hover:border-tide/60 hover:text-tide";
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      <button type="button" onClick={() => open(false)} className={btn}>📄 {t.openDoc}</button>
+      <button type="button" onClick={download} className={btn}>⬇ {t.downloadMd}</button>
+      <button type="button" onClick={() => open(true)} className={btn}>🖨 {t.savePdf}</button>
+    </div>
+  );
+}
+
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPapers, approving, approveError, onApprove, onUpload, onType, uploading, onResolve, has, read }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
+function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPapers, approving, approveError, onApprove, onApproveAll, onUpload, onType, uploading, onResolve, has, read, outbox, householdName }: Parameters<typeof CasePanel>[0] & { has: (a: string) => boolean; read: Set<string> }) {
   const t = STRINGS[lang];
+  const x = extrasText(lang);
+  const dragged = useDraggedEvidence();
+  const ready = s?.plan.filter((p) => p.status === "needs_approval" && !p.approved) ?? [];
   const [typing, setTyping] = useState(false);
   const total = s?.documents.length ?? 0;
   return (
     <>
+      <NextUp s={s} lang={lang} sample={sample} hasPile={!!pile?.papers.length} laterInPile={!!pile?.papers.some((p) => p.stage === "later")} startLeft={pile?.papers.filter((p) => p.stage === "start").length ?? 0} household={householdName} running={running} />
+      {s && has("Scored evidence") && <ProgressRing s={s} lang={lang} />}
+
       {sample && pile && (
-        <PaperPile lang={lang} title={pile.title} body={pile.body} papers={pile.papers} busy={running} queued={queued} onDrop={onDropPapers} />
+        <div id="bb-pile" className="rounded-2xl">
+          <PaperPile lang={lang} title={pile.title} body={pile.body} papers={pile.papers} busy={running} queued={queued} onDrop={onDropPapers}
+            neededKinds={s?.followUp ? (Object.entries(EVIDENCE_KINDS).filter(([, e]) => e === s.followUp!.evidence).map(([k]) => k)) : []} neededLabel={x.needed} />
+        </div>
       )}
 
       {running && (
@@ -196,8 +240,10 @@ function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPaper
         </div>
       )}
 
+      {s && has("Built recovery plan") && <DeadlineStrip s={s} lang={lang} />}
+
       {s?.followUp && has("Scored evidence") && (
-        <div className="rounded-2xl border border-bayou/40 bg-bayou-soft/40 p-3">
+        <div id="bb-followup" className="rounded-2xl border border-bayou/40 bg-bayou-soft/40 p-3">
           <h3 className="text-sm font-semibold text-tide">{t.needFromYou}</h3>
           <p className="mt-1 text-sm leading-relaxed text-ink">{tr(s.followUp[lang], lang)}</p>
           <p className="mt-1 text-[11px] text-muted">{tr(s.followUp.why, lang)}</p>
@@ -225,16 +271,26 @@ function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPaper
         <div role="status" className="rounded-2xl border border-moss/50 bg-moss/15 p-3">
           <h3 className="text-sm font-semibold text-ink">🎉 {t.allDoneTitle}</h3>
           <p className="mt-1 text-xs leading-relaxed text-ink">{t.allDoneBody(s.matches.length)}</p>
+          <RecoveryPackage s={s} outbox={outbox} events={events} lang={lang} />
         </div>
       )}
 
       {s && has("Built recovery plan") && (
         <div>
-          <h3 className="mb-1.5 text-sm font-semibold text-muted">{t.plan}</h3>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-muted">{t.plan}</h3>
+            {ready.length > 1 && (
+              <button type="button" onClick={onApproveAll} disabled={running || !!approving}
+                className="rounded-full bg-tide px-3 py-1 text-xs font-semibold text-night hover:brightness-110 disabled:opacity-50">✓ {x.approveAll(ready.length)}</button>
+            )}
+          </div>
           {approveError && <p role="alert" className="mb-2 rounded-xl bg-clay-soft p-2 text-xs text-clay">{approveError}</p>}
           <ol className="space-y-2">{s.plan.map((task) => {
+            const lit = dragged.size > 0 && missingOf(task, s).some((e) => dragged.has(e));
             return (
-            <li key={task.id} className="rounded-2xl border border-line p-3 transition">
+            <li key={task.id} id={`bb-task-${task.id}`}
+              className={`rounded-2xl border p-3 transition ${lit ? "scale-[1.01] border-sun bg-sun/10 shadow-[0_0_24px_rgb(245_181_68/0.35)]" : "border-line"}`}>
+              {lit && <p className="mb-1 text-[11px] font-semibold text-amber">✨ {x.lightsUp}</p>}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 text-sm font-semibold">{tr(task.title, lang)}</div>
                 {task.status === "blocked" && <span className="shrink-0 rounded-full bg-clay-soft px-2 py-0.5 text-[11px] text-clay">{t.blocked}</span>}
@@ -259,6 +315,7 @@ function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPaper
                 }
                 return <p className="mt-0.5 text-xs text-muted">{task.due ? `${fmt(task.due, lang)} · ` : ""}{tr(task.detail, lang)}</p>;
               })()}
+              <WhyBlocked task={task} s={s} lang={lang} />
               {task.status === "needs_approval" && (task.approved
                 ? <span className="mt-2 inline-block rounded-full bg-moss px-2.5 py-1 text-[11px] font-medium text-night">{t.approved}</span>
                 : <button onClick={() => onApprove(task)} disabled={running || approving === task.id}
@@ -289,6 +346,8 @@ function NextSteps({ s, events, running, lang, sample, pile, queued, onDropPaper
       )}
 
       {s && has("Built recovery plan") && s.documents.length > 0 && <PaperUses s={s} lang={lang} />}
+
+      {!running && events.length > 0 && <LiveFeed events={events} lang={lang} />}
 
       {!s?.plan.length && !running && !s && !pile && <Waiting>{t.waitingResults}</Waiting>}
       {s && !running && !s.plan.length && has("Built recovery plan") && <Waiting>{t.noPlan}</Waiting>}

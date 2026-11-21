@@ -184,6 +184,7 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     documents: [...rec.documents],
     reuse: incremental ? rec.state?.extractions : undefined,
     limits: SESSION_LIMITS,
+    resolutions: rec.resolutions,
     approver: "household" as const, // in the consumer app the household approves what goes out
   };
   const files = rec.files;

@@ -170,6 +170,18 @@ export const WALK_SPEED = 2.6; // units per second at normal pace
 const WORK_MS = 650;
 const HOME_AFTER_MS = 1600;
 const RECENT_MS = 6000;
+/** With `ambient` on: how long a helper stands at home before finding something to do, and how long it does it. */
+const AMBIENT_AFTER_MS = 1800;
+const AMBIENT_WORK_MS = 2600;
+
+/** Small, real-sounding background work for each helper, so the office never stands still. */
+const AMBIENT: Record<MascotId, [StationId, string][]> = {
+  coordinator: [["board", "Reviewing the case board"], ["desk", "Updating the plan"], ["graph", "Tidying the case map"]],
+  evidence: [["records", "Filing papers"], ["inbox", "Checking the mail tray"], ["reading", "Re-reading a letter"]],
+  llm: [["lab", "Double-checking quotes"], ["reading", "Comparing notes"], ["lab", "Checking every quote is in the document"]],
+  recovery: [["library", "Checking program rules"], ["phone", "Looking up deadlines"], ["library", "Reading the FEMA appeal rules"]],
+  approval: [["packets", "Proofreading drafts"], ["outbox", "Checking the practice outbox"], ["gate", "Guarding the gate"]],
+};
 
 export class OfficeDirector {
   mascots: Record<MascotId, MascotState>;
@@ -181,6 +193,9 @@ export class OfficeDirector {
   private snap: OfficeSnapshot;
   private snapKey = "";
   inbox = 0;
+  /** Keep idle helpers busy with background work (the app turns this on; tests leave it off). */
+  ambient = false;
+  private ambientTurn = 0;
 
   constructor(now = 0) {
     this.mascots = Object.fromEntries(MASCOTS.map((m): [MascotId, MascotState] => {
@@ -218,8 +233,8 @@ export class OfficeDirector {
 
   addJob(mascot: MascotId, job: Omit<Job, "workStart">, now = performance.now()) {
     const m = this.mascots[mascot];
-    // Coming home was only a filler job: drop it for real work.
-    if (m.job?.key === "home") m.job = undefined;
+    // Coming home and background work are only fillers: drop them for real work.
+    if (m.job?.key === "home" || m.job?.key.startsWith("ambient:")) m.job = undefined;
     m.queue.push({ ...job });
     m.starts.push(now);
     this.keys.set(job.key, mascot);
@@ -272,6 +287,11 @@ export class OfficeDirector {
         const homeSpot = this.slot(home, m.id);
         const away = Math.hypot(m.pos.x - homeSpot.x, m.pos.z - homeSpot.z) > 0.05;
         if (away && now - m.idleSince > HOME_AFTER_MS) m.job = { key: "home", station: home, label: `Back to the ${STATIONS[home].name.toLowerCase()}`, done: true, minMs: 0 };
+        else if (this.ambient && !away && now - m.idleSince > AMBIENT_AFTER_MS + MASCOTS.findIndex((x) => x.id === m.id) * 450) {
+          const list = AMBIENT[m.id];
+          const [station, label] = list[this.ambientTurn++ % list.length];
+          m.job = { key: `ambient:${m.id}`, station, label, done: true, minMs: AMBIENT_WORK_MS };
+        }
       }
       const job = m.job;
       if (!job) {

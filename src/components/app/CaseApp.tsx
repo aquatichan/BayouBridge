@@ -114,7 +114,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
   const [approveError, setApproveError] = useState<string | null>(null);
   const [claudeOn, setClaudeOn] = useState<boolean | null>(null);
   const [menu, setMenu] = useState(false);
-  const director = useMemo(() => new OfficeDirector(), []);
+  const director = useMemo(() => Object.assign(new OfficeDirector(), { ambient: true }), []);
   const eventsRef = useRef<ActivityEvent[]>([]);
   useEffect(() => { eventsRef.current = events; }, [events]);
 
@@ -314,6 +314,11 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     } catch (e) { setError((e as Error).message); } finally { setUploading(false); }
   }
 
+  /** Approve every ready step in turn, so the office acts each one out. */
+  async function approveAll() {
+    for (const task of state?.plan.filter((x) => x.status === "needs_approval" && !x.approved) ?? []) await approve(task);
+  }
+
   async function approve(task: PlanTask) {
     if (!caseId) return;
     setApproveError(null); setApproving(task.id);
@@ -451,7 +456,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
             <CasePanel
               s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample} mode={mode}
               pile={pile} queued={queued} onDropPapers={dropPapers} approving={approving} approveError={approveError} onResolve={resolve}
-              onApprove={approve} onUpload={(files) => followUp(files)} onType={(d) => followUp([], [d])} uploading={uploading}
+              onApprove={approve} onApproveAll={approveAll} householdName={household?.name ?? ""} onUpload={(files) => followUp(files)} onType={(d) => followUp([], [d])} uploading={uploading}
               onCollapse={wide ? () => setCollapsed(true) : undefined}
             />
           )}

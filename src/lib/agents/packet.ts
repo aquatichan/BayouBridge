@@ -1,7 +1,7 @@
 import { programs } from "@/data/resources";
 import type { CaseState, Need, Packet, ProgramMatch } from "@/lib/types";
 import { tr } from "@/lib/es";
-import { NEED_EVIDENCE, PROGRAM_NEEDS } from "./recovery";
+import { NEED_EVIDENCE, PROGRAM_NEEDS, sameName } from "./recovery";
 
 // Packet Agent: drafts what would be sent for a pathway whose evidence is
 // complete. Pure and deterministic. A packet only ever goes to the sandbox
@@ -23,9 +23,11 @@ const onBehalfEn = (name: string) =>
   /^(your household|su hogar)$/i.test(name) ? "the household" : /\bhousehold$/i.test(name) ? `the ${name}` : name;
 
 export function buildPacket(
-  match: ProgramMatch, state: Pick<CaseState, "documents" | "extractions" | "needs" | "householdName" | "address" | "disaster">,
+  match: ProgramMatch, state: Pick<CaseState, "documents" | "extractions" | "needs" | "householdName" | "address" | "disaster"> & Partial<Pick<CaseState, "people">>,
   /** Who approves it: a navigator (default) or, in the app, the household itself. */
   approver: "navigator" | "household" = "navigator",
+  /** What the household confirmed for each conflict, by conflict id. */
+  resolutions: Record<string, string> = {},
 ): Packet {
   const program = programs.find((p) => p.id === match.programId);
   const to = program?.agency ?? match.name;
@@ -59,11 +61,20 @@ export function buildPacket(
 
   // A FEMA appeal is a signed letter with the registration and disaster numbers, the reason, and what is enclosed.
   const fact = (type: string, label?: string) => state.extractions.flatMap((e) => e.facts).find((f) => f.type === type && (!label || f.label === label));
+  const applicant = resolutions["conflict-name"] ?? fact("person", "Person named")?.value ?? state.householdName.replace(/ household$/i, "");
+  const lossDate = resolutions["conflict-date-of-loss"] ?? fact("date_of_loss")?.value;
   const letter = match.programId === "fema-appeal" ? femaLetter({
     registration: fact("fema_registration")?.value, disaster: state.disaster.match(/DR-\d+-[A-Z]{2}/)?.[0],
-    applicant: fact("person", "Person named")?.value ?? state.householdName.replace(/ household$/i, ""),
+    applicant,
     address: state.address, letterDate: fact("deadline", "Letter date (appeal clock starts)")?.value,
     deadline: match.deadline?.date, encl: titles,
+  }) : undefined;
+  const form = letter ? occupancyDeclaration({
+    applicant,
+    registration: fact("fema_registration")?.value, disaster: state.disaster.match(/DR-\d+-[A-Z]{2}/)?.[0],
+    address: state.address, lossDate,
+    // The others in the home: not the applicant, and not a bare "Husband" placeholder name twice.
+    members: (state.people ?? []).map((p) => p.name).filter((n) => !sameName(n, applicant) && n !== applicant),
   }) : undefined;
 
   return {
@@ -80,6 +91,21 @@ export function buildPacket(
     },
     status: "draft",
     ...(letter ? { letter } : {}),
+    ...(form ? { form } : {}),
+  };
+}
+
+/**
+ * A declarative statement of occupancy, filled in from the case. FEMA can accept a signed
+ * statement when other proof of occupancy is hard to get; the household checks every line,
+ * fills the blanks, and signs it. A mock-up for the demo, not an official FEMA form.
+ */
+function occupancyDeclaration(x: { applicant: string; registration?: string; disaster?: string; address: string; lossDate?: string; members: string[] }) {
+  const reg = x.registration ?? "[registration number]", dis = x.disaster ?? "[disaster number]", loss = x.lossDate ?? "[date of the disaster]";
+  const who = x.members.length ? x.members.map((m) => `  - ${m}`).join("\n") : "  - ______________________";
+  return {
+    en: `DECLARATIVE STATEMENT OF OCCUPANCY (draft, not an official FEMA form)\n\nApplicant: ${x.applicant}\nFEMA registration number: ${reg}\nDisaster number: ${dis}\nDamaged home: ${x.address}\n\nI lived at the address above as my primary residence on ${loss}, when the disaster struck.\nI lived there from ______________ (month/year) to the date of the disaster.\n\nPeople who lived in the home with me:\n${who}\n\nI declare that the information above is true and correct. I understand that a false statement to obtain federal disaster assistance is a crime.\n\nSignature: ______________________   Date: ______________\nPrinted name: ${x.applicant}`,
+    es: `DECLARACIÓN DE RESIDENCIA (borrador, no es un formulario oficial de FEMA)\n\nSolicitante: ${x.applicant}\nNúmero de registro de FEMA: ${reg}\nNúmero de desastre: ${dis}\nCasa dañada: ${x.address}\n\nVivía en la dirección de arriba como mi residencia principal el ${loss}, cuando ocurrió el desastre.\nViví allí desde ______________ (mes/año) hasta la fecha del desastre.\n\nPersonas que vivían conmigo en la casa:\n${who}\n\nDeclaro que la información anterior es verdadera y correcta. Entiendo que dar información falsa para obtener asistencia federal por desastre es un delito.\n\nFirma: ______________________   Fecha: ______________\nNombre en letra de molde: ${x.applicant}`,
   };
 }
 
