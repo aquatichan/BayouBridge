@@ -1,5 +1,5 @@
 import { tr } from "@/lib/es";
-import type { OutboxItem } from "@/lib/types";
+import type { ActivityEvent, CaseState, OutboxItem } from "@/lib/types";
 
 // A packet as a document you can read: Markdown to download, HTML to open or print
 // to PDF. Both come from the same sections, in the reader's language.
@@ -8,10 +8,10 @@ type Lang = "en" | "es";
 
 const H = {
   en: { to: "To", from: "From", status: "Status", approved: (by: string, at: string) => `Approved by ${by} on ${at}. Held in the practice outbox: nothing was sent.`,
-    cover: "Cover note", letter: "Appeal letter (sign before sending)", encl: "Enclosed documents", facts: "Facts cited, and where they come from",
+    cover: "Cover note", letter: "Appeal letter (sign before sending)", form: "Declarative statement of occupancy (check, fill in and sign)", encl: "Enclosed documents", facts: "Facts cited, and where they come from",
     via: "via BayouBridge", note: "Prepared with BayouBridge, a hackathon prototype. Every household and document in the demo is made up. This is a possible match, not a decision: only the agency decides who qualifies." },
   es: { to: "Para", from: "De", status: "Estado", approved: (by: string, at: string) => `Aprobado por ${by === "You" ? "usted" : by} el ${at}. Guardado en la bandeja de práctica: no se envió nada.`,
-    cover: "Nota de presentación", letter: "Carta de apelación (fírmela antes de enviarla)", encl: "Documentos adjuntos", facts: "Datos citados y de dónde vienen",
+    cover: "Nota de presentación", letter: "Carta de apelación (fírmela antes de enviarla)", form: "Declaración de residencia (revísela, complétela y fírmela)", encl: "Documentos adjuntos", facts: "Datos citados y de dónde vienen",
     via: "con BayouBridge", note: "Preparado con BayouBridge, un prototipo de hackathon. Todos los hogares y documentos del ejemplo son inventados. Es una opción posible, no una decisión: solo la agencia decide quién califica." },
 };
 
@@ -22,6 +22,7 @@ function build(item: OutboxItem, lang: Lang, household: string, docTitle: (id: s
   const at = new Date(item.queuedAt).toLocaleString(lang === "es" ? "es-US" : "en-US", { dateStyle: "long", timeStyle: "short" });
   const sections: Doc["sections"] = [{ heading: h.cover, body: p.bilingualCover[lang] }];
   if (p.letter) sections.push({ heading: h.letter, body: p.letter[lang], pre: true });
+  if (p.form) sections.push({ heading: h.form, body: p.form[lang], pre: true });
   sections.push({ heading: h.encl, body: "", list: p.attachments.map((a) => tr(a.title, lang)) });
   if (p.citations.length) sections.push({ heading: h.facts, body: "", list: p.citations.map((c) => `“${c.quote}” (${tr(docTitle(c.docId), lang)})`) });
   return {
@@ -67,3 +68,55 @@ ${d.sections.map((s) => `<h2>${esc(s.heading)}</h2>${s.pre ? `<pre>${esc(s.body)
 /** A safe file name for the download: "fema-individual-assistance-appeal.md". */
 export const packetFileName = (item: OutboxItem) =>
   `${item.packet.title.replace(/: packet$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`;
+
+// ── The "Recovery complete" package: everything in one document ─────────────
+
+
+const P = {
+  en: { title: "Recovery package", ready: (n: number) => `${n}% of the documents the programs ask for are on file.`, steps: "Every step", done: "Done", approved: "Approved", waiting: "Waiting", todo: "To do",
+    programs: "Programs", log: "What the helpers did", packets: "Approved packets", sticker: "Packed with care by the BayouBridge capybara." },
+  es: { title: "Paquete de recuperación", ready: (n: number) => `El ${n}% de los documentos que piden los programas está listo.`, steps: "Todos los pasos", done: "Listo", approved: "Aprobado", waiting: "En espera", todo: "Pendiente",
+    programs: "Programas", log: "Lo que hicieron los ayudantes", packets: "Paquetes aprobados", sticker: "Empacado con cariño por el capibara de BayouBridge." },
+};
+
+/** A tiny capybara, drawn inline: the hidden sticker the Teen Hacks organizers asked for. */
+const CAPYBARA = `<svg width="72" height="52" viewBox="0 0 72 52" aria-label="capybara"><ellipse cx="36" cy="32" rx="26" ry="15" fill="#a0703c"/><ellipse cx="58" cy="24" rx="11" ry="9" fill="#a0703c"/><ellipse cx="66" cy="25" rx="5" ry="4" fill="#7a5129"/><circle cx="58" cy="20" r="1.8" fill="#1b1b1b"/><ellipse cx="52" cy="15" rx="3" ry="2.2" fill="#7a5129"/><rect x="18" y="42" width="6" height="8" rx="2" fill="#7a5129"/><rect x="44" y="42" width="6" height="8" rx="2" fill="#7a5129"/><circle cx="40" cy="12" r="4" fill="#f5b544"/><path d="M40 8v-4" stroke="#4f7d4d" stroke-width="2"/></svg>`;
+
+function packageParts(s: CaseState, outbox: OutboxItem[], events: ActivityEvent[], lang: Lang) {
+  const t = P[lang];
+  const status = (x: CaseState["plan"][number]) => (x.status === "done" ? t.done : x.approved ? t.approved : x.status === "blocked" ? t.waiting : t.todo);
+  const title = (id: string) => s.documents.find((d) => d.id === id)?.title ?? id;
+  return {
+    t, title,
+    steps: s.plan.map((x) => `${x.status === "done" || x.approved ? "☑" : "☐"} ${tr(x.title, lang)} (${status(x)})`),
+    programs: s.matches.map((m) => `${tr(m.name, lang)}: ${Math.round(m.readiness * 100)}%${m.deadline ? ` · ${m.deadline.date}` : ""}`),
+    log: events.map((e) => `${tr(e.agent, lang)}: ${tr(e.action, lang)}`),
+  };
+}
+
+export function recoveryMarkdown(s: CaseState, outbox: OutboxItem[], events: ActivityEvent[], lang: Lang): string {
+  const { t, title, steps, programs, log } = packageParts(s, outbox, events, lang);
+  return [
+    `# ${t.title}: ${s.householdName}`, "", `${s.address}  `, `${t.ready(s.evidenceScore)}`, "",
+    `## ${t.programs}`, "", ...programs.map((x) => `- ${x}`), "",
+    `## ${t.steps}`, "", ...steps.map((x) => `- ${x}`), "",
+    `## ${t.packets}`, "", ...outbox.flatMap((o) => [packetMarkdown(o, lang, s.householdName, title).replace(/^# /, "### "), ""]),
+    `## ${t.log}`, "", ...log.map((x, i) => `${i + 1}. ${x}`), "",
+    `_🦫 ${t.sticker}_`, "",
+  ].join("\n");
+}
+
+export function recoveryHtml(s: CaseState, outbox: OutboxItem[], events: ActivityEvent[], lang: Lang): string {
+  const { t, title, steps, programs, log } = packageParts(s, outbox, events, lang);
+  const packetBodies = outbox.map((o) => packetHtml(o, lang, s.householdName, title).replace(/^[\s\S]*<body>|<\/body>[\s\S]*$/g, "").replace(/<h1>/g, '<h2 class="pk">').replace(/<\/h1>/g, "</h2>"));
+  const li = (xs: string[]) => `<ul>${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(t.title)}</title>
+<style>body{font:15px/1.6 Georgia,serif;color:#1b1b1b;background:#fff;max-width:760px;margin:40px auto;padding:0 20px}h1{font-size:26px;margin:0}h2{font-size:17px;margin:30px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
+h2.pk{border:0;margin-top:40px;font-size:19px;page-break-before:always}pre{white-space:pre-wrap;font:14px/1.6 Georgia,serif;background:#faf7ef;border:1px solid #e6dfcd;padding:14px}.note{color:#666;font-size:12px;font-style:italic}
+.sticker{display:flex;align-items:center;gap:10px;margin-top:36px;color:#7a5129;font-size:13px}ol li,ul li{margin:3px 0}</style></head><body>
+<h1>${esc(t.title)}: ${esc(s.householdName)}</h1><p>${esc(s.address)}<br><b>${esc(t.ready(s.evidenceScore))}</b></p>
+<h2>${esc(t.programs)}</h2>${li(programs)}<h2>${esc(t.steps)}</h2>${li(steps)}
+${packetBodies.join("\n")}
+<h2>${esc(t.log)}</h2><ol>${log.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+<div class="sticker">${CAPYBARA}<span>${esc(t.sticker)}</span></div></body></html>`;
+}

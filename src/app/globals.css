@@ -110,3 +110,11 @@ body:has(main.landing) { background: var(--night); }
 @media (prefers-reduced-motion: reduce) {
   .unlock, .ticker, .scroll-cue { animation: none; }
 }
+
+/* "Show me" in the Next up banner: a brief glow on what to do next. */
+@keyframes bb-flash { 0%, 100% { box-shadow: 0 0 0 0 rgb(245 181 68 / 0); } 30% { box-shadow: 0 0 0 4px rgb(245 181 68 / 0.75); } }
+.bb-flash { animation: bb-flash 1.4s ease-out 2; }
+/* New lines in the live activity feed slide in. */
+@keyframes bb-feed-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.bb-feed-in:first-child { animation: bb-feed-in 300ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .bb-flash, .bb-feed-in:first-child { animation: none; } }

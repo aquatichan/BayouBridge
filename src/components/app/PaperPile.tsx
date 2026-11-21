@@ -4,6 +4,7 @@ import { useState } from "react";
 import { tr } from "@/lib/es";
 import type { CaseDocument } from "@/lib/types";
 import { STRINGS, type Lang } from "./i18n";
+import { announceDrag } from "./Extras";
 import { PaperSheet } from "./Papers";
 
 // A sample household's papers, handed to the person to drop into BayouBridge.
@@ -41,8 +42,10 @@ export function PaperThumb({ p, seed, lifted = false, size = "md" }: { p: Pick<S
     : <PaperSheet icon={KIND_ICON[p.kind]} seed={seed} lifted={lifted} />;
 }
 
-export default function PaperPile({ lang, title, body, papers, busy, queued, onDrop }: {
+export default function PaperPile({ lang, title, body, papers, busy, queued, onDrop, neededKinds = [], neededLabel = "" }: {
   lang: Lang; title: string; body: string; papers: SamplePaper[];
+  /** Kinds of paper the helpers just asked for: marked so a first-time viewer knows what to drag. */
+  neededKinds?: string[]; neededLabel?: string;
   /** The helpers are reading: drops still work, they wait their turn. */
   busy: boolean; queued: number; onDrop: (ids: string[]) => void;
 }) {
@@ -72,10 +75,15 @@ export default function PaperPile({ lang, title, body, papers, busy, queued, onD
                   const ids = on ? [...picked] : [p.id];
                   e.dataTransfer.setData(MIME, JSON.stringify(ids));
                   e.dataTransfer.effectAllowed = "copy";
+                  announceDrag(papers.filter((x) => ids.includes(x.id)).map((x) => x.kind));
                 }}
+                onDragEnd={() => announceDrag(null)}
                 onClick={() => toggle(p.id)}
                 className={`group flex w-full cursor-grab flex-col items-center gap-1 rounded-xl p-1.5 text-center outline-none transition active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-tide ${on ? "bg-tide/15 ring-1 ring-tide/60" : "hover:bg-white/5"}`}>
-                <span className="grid h-[86px] place-items-center transition-transform group-hover:-translate-y-1"><PaperThumb p={p} seed={i + 1} lifted={on} /></span>
+                <span className="relative grid h-[86px] place-items-center transition-transform group-hover:-translate-y-1">
+                  <PaperThumb p={p} seed={i + 1} lifted={on} />
+                  {neededKinds.includes(p.kind) && <span className="absolute -right-1 -top-1 animate-pulse rounded-full bg-sun px-1.5 py-0.5 text-[9px] font-bold text-night shadow">{neededLabel}</span>}
+                </span>
                 <span className={`line-clamp-2 text-[11px] font-semibold leading-tight ${on ? "text-tide" : "text-ink"}`}>{tr(p.title, lang)}</span>
                 <span className="line-clamp-2 text-[10px] leading-tight text-muted">{t.kindInfo[p.kind]}</span>
               </button>

@@ -185,6 +185,8 @@ export interface Packet {
   bilingualCover: { en: string; es: string };
   /** For a FEMA appeal: the draft letter with what FEMA asks an appeal to contain. */
   letter?: { en: string; es: string };
+  /** For a FEMA appeal: a filled-in declarative statement of occupancy, to sign if other proof falls short. */
+  form?: { en: string; es: string };
   status: "draft" | "approved" | "queued";
 }
 

@@ -97,6 +97,8 @@ const PHRASES: Record<string, string> = {
 
   // Document titles (the sample households)
   "Mortgage statement": "Estado de hipoteca",
+  "60 days from the date on the FEMA letter": "60 días desde la fecha de la carta de FEMA",
+  "Due date stated in the insurer's email": "Fecha límite que indica el correo de la aseguradora",
   "Doctor's critical care form": "Formulario de cuidado crítico del médico",
   "Driver license": "Licencia de conducir",
   "Kids' bedroom ceiling photo": "Foto del techo del cuarto de los niños",
