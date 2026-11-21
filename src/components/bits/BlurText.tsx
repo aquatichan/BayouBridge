@@ -35,9 +35,6 @@ type BlurTextProps = {
   color?: string;
   fromColor?: string;
   focusOnHover?: boolean;
-  /** BayouBridge: word indexes to set in the accent style (serif italic). */
-  accent?: number[];
-  accentClassName?: string;
 };
 
 interface EffectConfig {
@@ -237,9 +234,7 @@ const BlurText = ({
   loopDelay = 2,
   color,
   fromColor,
-  focusOnHover = false,
-  accent,
-  accentClassName = ""
+  focusOnHover = false
 }: BlurTextProps) => {
   const ref = useRef<HTMLSpanElement>(null);
   const [phase, setPhase] = useState<Phase>(() => startPhase(trigger));
@@ -428,7 +423,7 @@ const BlurText = ({
         {groups.map((indices, w) => (
           <span
             key={`word-${w}`}
-            className={`inline-flex ${accent?.includes(w) ? accentClassName : ""}`}
+            className="inline-flex"
             style={wordStyle(w)}
             onPointerEnter={focusOnHover ? () => setFocusWord(w) : undefined}
             onPointerLeave={focusOnHover ? () => setFocusWord(-1) : undefined}

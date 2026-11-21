@@ -120,7 +120,6 @@ export default function Story({ lang, sectionRef }: { lang: Lang; sectionRef: Re
       <div className="sticky top-0 h-[100svh] px-[var(--frame)] pb-[var(--frame)] pt-[calc(var(--frame)+76px)]">
         <div className="card-night flex h-full flex-col gap-4 rounded-[var(--radius)] p-3 text-cream md:grid md:grid-cols-[minmax(0,1fr)_minmax(300px,34%)] md:gap-6 md:p-6">
 
-          {/* The office */}
           <div className={`relative min-h-0 flex-[1_1_46%] overflow-hidden rounded-[20px] border transition-shadow duration-700 md:h-full ${unblocked ? "border-sun/70 shadow-[0_0_70px_rgb(245_181_68/0.28)]" : "border-white/10"}`}>
             {director
               ? <Office director={director} hud={false} follow={follow} interactive={false} className="h-full w-full" />
@@ -133,7 +132,6 @@ export default function Story({ lang, sectionRef }: { lang: Lang; sectionRef: Re
             </div>
           </div>
 
-          {/* The work cards */}
           <div className="flex min-h-0 flex-1 flex-col md:h-full">
             <div className="px-1 pt-1 md:pt-2">
               <div className="flex items-baseline justify-between gap-3">
@@ -141,8 +139,7 @@ export default function Story({ lang, sectionRef }: { lang: Lang; sectionRef: Re
                 <p className="text-sm tabular-nums text-cream/60">{index + 1} of {STEPS.length}</p>
               </div>
               <h2 id="story-title" className="mt-2 hidden md:block">
-                <BlurText key={lang} text={t.title.join("").trim()} animateBy="words" trigger="view" delay={60}
-                  accent={[t.title.join("").trim().split(/\s+/).length - 1]} accentClassName="accent text-tide"
+                <BlurText key={lang} text={t.title} animateBy="words" trigger="view" delay={60}
                   className="headline text-[clamp(1.6rem,2.6vw,2.6rem)]" />
               </h2>
               <p className="mt-2 hidden text-sm text-cream/60 md:block">{t.note}</p>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { POST as createCase } from "../src/app/api/cases/route";
-import { POST as upload } from "../src/app/api/cases/[id]/documents/route";
+import { POST as createCase } from "../src/server/api/cases";
+import { POST as upload } from "../src/server/api/documents";
 import { guessKind } from "../src/lib/agents/evidence";
 import { runSessionCase } from "../src/lib/cases";
 import { spanish } from "../src/lib/es";

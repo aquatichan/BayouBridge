@@ -10,21 +10,20 @@ import { OfficeDirector } from "@/lib/office/director";
 import type { ActivityEvent, CaseState, ExtractionSummary, OutboxItem, PlanTask, TaskUpdate } from "@/lib/types";
 import CasePanel from "./CasePanel";
 import { checkFiles, Consent, Home, SamplePicker, Upload, Welcome, type TypedDoc } from "./Onboarding";
-import { DEMO_CARDS, type DemoId } from "@/data/demoList";
-import type { Paper } from "./CasePanel";
+import type { DemoId } from "@/data/demoList";
+import type { SamplePaper } from "./PaperPile";
 import { tr } from "@/lib/es";
 import { extractionLabel, extractionTooltip } from "@/lib/labels";
 import { STRINGS, type Lang } from "./i18n";
 
 // The consumer app: welcome → consent → your home → upload → the office.
-// The 3D office is always there: idle behind the first steps, then the
-// immersive dashboard where you watch the agents work your case.
+// The 3D office is always there: idle behind the first steps, then full
+// screen with the results panel while the agents work the case.
 
 type Step = "welcome" | "samples" | "consent" | "home" | "upload" | "office";
-/** A sample household's "a document arrives" moments: which document fills which gap. */
-type SampleFollowUp = { id: string; title: string; provides: string };
 const SESSION_KEY = "bayoubridge.case";
-const PAPER_ICONS: Record<string, string> = { proof_of_occupancy: "🧾", proof_of_identity: "🪪", medical_need_documentation: "🩺" };
+/** The server no longer has this case (expired, deleted, or a different server instance answered). */
+const isGone = (msg: string) => /expired or was deleted|Case not found/i.test(msg);
 const LANG_KEY = "bayoubridge.lang";
 const SIDE_MIN = 340, SIDE_MAX = 640, SIDE_RAIL = 56; // desktop sidebar: resizable between min/max, or collapsed to a rail
 const SIDE_KEY = "bayoubridge.sidebar";
@@ -90,7 +89,16 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
   const [caseId, setCaseId] = useState<string | null>(null);
   const [sample, setSample] = useState(false);
   const [household, setHousehold] = useState<{ name: string; address: string } | null>(null);
-  const [followUps, setFollowUps] = useState<SampleFollowUp[]>([]);
+  const [samplePapers, setSamplePapers] = useState<SamplePaper[]>([]);
+  // Sample papers dropped in so far, and drops waiting for the current run to finish.
+  const [dropped, setDropped] = useState<string[]>([]);
+  const droppedRef = useRef<string[]>([]);
+  const pending = useRef<string[]>([]);
+  const [queued, setQueued] = useState(0);
+  // What a sample case needs to be rebuilt if the server loses it: answers and approvals so far.
+  const answers = useRef<Record<string, string>>({});
+  const approvals = useRef<string[]>([]);
+  const recoverRef = useRef<(() => Promise<string | null>) | null>(null);
   const [demoId, setDemoId] = useState<DemoId | null>(null);
   const [state, setState] = useState<CaseState | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -114,17 +122,23 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
   useEffect(() => {
     try { const l = localStorage.getItem(LANG_KEY); if (l === "es" || l === "en") setLang(l); } catch { /* storage off */ }
     fetch("/api/status").then((r) => r.json()).then((d: { claude: boolean }) => setClaudeOn(d.claude)).catch(() => setClaudeOn(null));
+    // A link that asks for something ("Start a case", "Try an example") wins over the case saved in this tab.
+    if (start !== "welcome") { store.del(SESSION_KEY); return; }
     const id = store.get(SESSION_KEY);
     if (!id) return;
     fetch(`/api/cases/${id}`).then(async (r) => {
       if (!r.ok) { store.del(SESSION_KEY); return; }
-      const d = (await r.json()) as { profile: { name: string; address: string; sample: boolean; demo?: DemoId }; state: CaseState | null; followUps: SampleFollowUp[] };
-      setCaseId(id); setSample(d.profile.sample); setHousehold(d.profile); setFollowUps(d.followUps ?? []); setDemoId(d.profile.demo ?? null);
+      const d = (await r.json()) as { profile: { name: string; address: string; sample: boolean; demo?: DemoId }; documents: { id: string }[]; state: CaseState | null; papers: SamplePaper[] };
+      setCaseId(id); setSample(d.profile.sample); setHousehold(d.profile); setSamplePapers(d.papers ?? []); setDemoId(d.profile.demo ?? null);
+      if (d.profile.sample) { droppedRef.current = d.documents.map((x) => x.id); setDropped(droppedRef.current); }
+      if (d.profile.sample && !d.state) setStep("office");
       if (d.state) {
         setState(d.state); setMode(d.state.extraction); setEvents(d.state.events); setStep("office");
         fetch(`/api/outbox?caseId=${id}`).then((x) => x.json()).then((o: { items: OutboxItem[] }) => setOutbox(o.items)).catch(() => {});
       } else if (!d.profile.sample) setStep("upload");
     }).catch(() => {});
+    // Runs once on load; `start` comes from the URL and doesn't change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const chooseLang = (l: Lang) => { setLang(l); try { localStorage.setItem(LANG_KEY, l); } catch { /* storage off */ } };
 
@@ -141,7 +155,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
   }, [start]);
 
   /** Run the agents, live. `incremental` reuses what was already read; `newDocs` is how many papers land in the inbox. */
-  const run = useCallback(async (id: string, opts: { incremental?: boolean; newDocs: number; addDocumentIds?: string[] }) => {
+  const run = useCallback(async (id: string, opts: { incremental?: boolean; newDocs: number; addDocumentIds?: string[]; recovering?: boolean }) => {
     const before = opts.incremental ? eventsRef.current : [];
     setRunning(true); setError(null); setApproveError(null); setTasks({});
     if (!opts.incremental) { setState(null); setEvents([]); setMode(null); }
@@ -167,21 +181,70 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
         finish(d.state, d.extraction);
       }
     } catch (e) {
-      setError(e instanceof RunError || e instanceof Error ? e.message : String(e));
+      const msg = e instanceof RunError || e instanceof Error ? e.message : String(e);
+      // A sample case the server lost is rebuilt from its papers, so the demo carries on.
+      if (!opts.recovering && isGone(msg) && recoverRef.current) {
+        setRunning(false);
+        await recoverRef.current();
+        return;
+      }
+      setError(msg);
     } finally {
       setRunning(false); setTasks({});
     }
   }, [director]);
 
+  /** Rebuild a lost sample case: a fresh copy, the same papers, then the same answers and approvals. Returns the new id. */
+  async function recoverSample(): Promise<string | null> {
+    if (!demoId) return null;
+    try {
+      const d = await postJSON<{ caseId: string }>("/api/cases", { sample: true, demo: demoId, language: lang, empty: true });
+      store.set(SESSION_KEY, d.caseId);
+      setCaseId(d.caseId);
+      const ids = droppedRef.current;
+      if (ids.length) await run(d.caseId, { newDocs: ids.length, addDocumentIds: ids, recovering: true });
+      for (const [conflictId, value] of Object.entries(answers.current)) await postJSON("/api/resolve", { caseId: d.caseId, conflictId, value }).catch(() => {});
+      for (const taskId of approvals.current) await postJSON("/api/approve", { caseId: d.caseId, taskId }).catch(() => {});
+      if (Object.keys(answers.current).length || approvals.current.length) {
+        const r = await fetch(`/api/cases/${d.caseId}`).then((x) => x.json()) as { state: CaseState | null };
+        if (r.state) setState(r.state);
+        const o = await fetch(`/api/outbox?caseId=${d.caseId}`).then((x) => x.json()) as { items: OutboxItem[] };
+        setOutbox(o.items);
+      }
+      return d.caseId;
+    } catch (e) { setError((e as Error).message); return null; }
+  }
+  recoverRef.current = sample ? recoverSample : null;
+
+  /** Sample papers dropped into BayouBridge. If the helpers are busy, they wait for the current run. */
+  function dropPapers(ids: string[]) {
+    const fresh = ids.filter((id) => !droppedRef.current.includes(id));
+    if (!caseId || !fresh.length) return;
+    droppedRef.current = [...droppedRef.current, ...fresh];
+    setDropped(droppedRef.current);
+    if (running) { pending.current.push(...fresh); setQueued(pending.current.length); return; }
+    void run(caseId, { incremental: true, newDocs: fresh.length, addDocumentIds: fresh });
+  }
+  useEffect(() => {
+    if (running || !caseId || !pending.current.length) return;
+    const ids = pending.current;
+    pending.current = [];
+    setQueued(0);
+    void run(caseId, { incremental: true, newDocs: ids.length, addDocumentIds: ids });
+  }, [running, caseId, run]);
+
   async function startSample(which: DemoId) {
     setBusy(true); setError(null);
     try {
-      const d = await postJSON<{ caseId: string; profile: { name: string; address: string }; followUps: SampleFollowUp[]; documentCount: number }>(
-        "/api/cases", { sample: true, demo: which, language: lang });
+      // The case starts empty: the family's papers are handed to the person to drop in.
+      const d = await postJSON<{ caseId: string; profile: { name: string; address: string }; papers: SamplePaper[] }>(
+        "/api/cases", { sample: true, demo: which, language: lang, empty: true });
       store.set(SESSION_KEY, d.caseId);
-      setCaseId(d.caseId); setSample(true); setHousehold(d.profile); setFollowUps(d.followUps); setDemoId(which); setOutbox([]);
+      setCaseId(d.caseId); setSample(true); setHousehold(d.profile); setSamplePapers(d.papers); setDemoId(which); setOutbox([]);
+      setState(null); setEvents([]); setMode(null);
+      droppedRef.current = []; setDropped([]); pending.current = []; setQueued(0); answers.current = {}; approvals.current = [];
+      director.newRun(0);
       setStep("office");
-      await run(d.caseId, { newDocs: d.documentCount });
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -190,7 +253,13 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     if (!caseId) return;
     setApproveError(null);
     try {
-      const d = await postJSON<{ conflicts: CaseState["conflicts"]; plan: PlanTask[]; events: ActivityEvent[] }>("/api/resolve", { caseId, conflictId, value });
+      const post = (id: string) => postJSON<{ conflicts: CaseState["conflicts"]; plan: PlanTask[]; events: ActivityEvent[] }>("/api/resolve", { caseId: id, conflictId, value });
+      const d = await post(caseId).catch(async (e: Error) => {
+        const id = sample && isGone(e.message) ? await recoverSample() : null;
+        if (!id) throw e;
+        return post(id);
+      });
+      answers.current[conflictId] = value;
       d.events.forEach((e) => director.onEvent(e));
       setState((prev) => prev && { ...prev, conflicts: d.conflicts, plan: d.plan });
       setEvents((x) => [...x, ...d.events]);
@@ -249,7 +318,13 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     if (!caseId) return;
     setApproveError(null); setApproving(task.id);
     try {
-      const d = await postJSON<{ task: PlanTask; events: ActivityEvent[]; item: OutboxItem }>("/api/approve", { caseId, taskId: task.id });
+      const post = (id: string) => postJSON<{ task: PlanTask; events: ActivityEvent[]; item: OutboxItem }>("/api/approve", { caseId: id, taskId: task.id });
+      const d = await post(caseId).catch(async (e: Error) => {
+        const id = sample && isGone(e.message) ? await recoverSample() : null;
+        if (!id) throw e;
+        return post(id);
+      });
+      if (!approvals.current.includes(task.id)) approvals.current.push(task.id);
       d.events.forEach((e) => director.onEvent(e));
       setState((prev) => prev && {
         ...prev,
@@ -268,22 +343,25 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
     setMenu(false);
     if (caseId) await fetch(`/api/cases/${caseId}`, { method: "DELETE" }).catch(() => {});
     store.del(SESSION_KEY);
-    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null); setFollowUps([]); setDemoId(null);
+    setCaseId(null); setState(null); setEvents([]); setOutbox([]); setMode(null); setHousehold(null); setSamplePapers([]); setDemoId(null);
+    droppedRef.current = []; setDropped([]); pending.current = []; setQueued(0); answers.current = {}; approvals.current = [];
     director.newRun(0);
     setStep("welcome");
     if (!sample) setNotice(t.deleted);
   }
 
   const minutes = events.reduce((n, e) => n + (e.minutesSaved ?? 0), 0);
-  // "Your papers" in a sample case: the documents still to come, with the household's decoys mixed in.
-  const papers: Paper[] = useMemo(() => {
-    if (!sample || !state) return [];
-    const real = followUps.filter((f) => !state.documents.some((d) => d.id === f.id))
-      .map((f) => ({ key: f.id, id: f.id, provides: f.provides, icon: PAPER_ICONS[f.provides] ?? "📄", title: tr(f.title, lang) }));
-    if (!real.length) return [];
-    const decoys = (DEMO_CARDS.find((c) => c.id === demoId)?.decoys ?? []).map((x, i) => ({ key: `decoy-${i}`, icon: x.icon, title: x.title[lang] }));
-    return real.flatMap((p, i) => (decoys[i] ? [p, decoys[i]] : [p])).concat(decoys.slice(real.length)); // interleaved, so the answer isn't always first
-  }, [sample, state, followUps, demoId, lang]);
+  // A sample case's papers to drop in: the family's first pile, then, once the helpers have
+  // made a plan and asked for something, the papers the family finds later.
+  const pile = useMemo(() => {
+    if (!sample) return null;
+    const left = (stage: SamplePaper["stage"]) => samplePapers.filter((p) => p.stage === stage && !dropped.includes(p.id));
+    const first = left("start");
+    if (first.length) return { title: t.pileTitle(household?.name ?? ""), body: t.pileBody, papers: first };
+    const later = left("later");
+    if (later.length && state?.plan.length) return { title: t.laterTitle, body: t.laterBody, papers: later };
+    return null;
+  }, [sample, samplePapers, dropped, state, household, t]);
   const inOffice = step === "office";
   const sideOpen = !collapsed;
   const side = inOffice && wide ? (sideOpen ? sideW : SIDE_RAIL) : 0;
@@ -300,7 +378,6 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
         rightInset={side}
       />
 
-      {/* Top bar */}
       <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-2 px-3 py-2 transition-[right] duration-300 md:right-[var(--side)] md:px-4 md:py-3">
         <div className="flex min-w-0 items-center gap-2 rounded-full border border-tide/15 bg-panel/75 shadow-[0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-md py-1 pl-1 pr-3">
           <Link href="/" aria-label="BayouBridge home" className="shrink-0">
@@ -373,9 +450,8 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
           ) : (
             <CasePanel
               s={state} events={events} tasks={tasks} running={running} lang={lang} outbox={outbox} sample={sample} mode={mode}
-              papers={papers} approving={approving} approveError={approveError} onResolve={resolve}
+              pile={pile} queued={queued} onDropPapers={dropPapers} approving={approving} approveError={approveError} onResolve={resolve}
               onApprove={approve} onUpload={(files) => followUp(files)} onType={(d) => followUp([], [d])} uploading={uploading}
-              onArrive={(id) => caseId && run(caseId, { incremental: true, newDocs: 1, addDocumentIds: [id] })}
               onCollapse={wide ? () => setCollapsed(true) : undefined}
             />
           )}

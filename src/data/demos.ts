@@ -76,7 +76,7 @@ We lost power for three days and lost all our food, about 260 dollars of groceri
 FEMA sent me a letter saying I'm not eligible because they couldn't verify I lived here.`,
   }),
   doc({
-    id: "doc-johnson-bedroom-photo", kind: "photo", title: "Kids' bedroom ceiling photo", filename: "IMG_3310.jpg", mime: "image/jpeg",
+    id: "doc-johnson-bedroom-photo", preview: "/demo/johnson-bedroom.jpg", kind: "photo", title: "Kids' bedroom ceiling photo", filename: "IMG_3310.jpg", mime: "image/jpeg",
     receivedAt: "2026-10-11",
     text: `[Vision caption]
 Apartment bedroom with two twin beds. A brown water stain spreads across the ceiling above the beds.
@@ -84,7 +84,7 @@ The carpet is soaked along the outer wall and dark mold spots are visible on the
 Photo metadata timestamp: 2026-10-11 09:02.`,
   }),
   doc({
-    id: "doc-johnson-kitchen-photo", kind: "photo", title: "Spoiled food photo", filename: "IMG_3317.jpg", mime: "image/jpeg",
+    id: "doc-johnson-kitchen-photo", preview: "/demo/johnson-kitchen.jpg", kind: "photo", title: "Spoiled food photo", filename: "IMG_3317.jpg", mime: "image/jpeg",
     receivedAt: "2026-10-12",
     text: `[Vision caption]
 Apartment kitchen. The refrigerator door is open and empty. Four trash bags of spoiled groceries sit on the floor.
@@ -173,7 +173,7 @@ Rain came into the back bedroom through the roof.
 We live on Social Security, about 2,900 dollars a month, and we cannot pay the deductible and the repairs on our own.`,
   }),
   doc({
-    id: "doc-nguyen-roof-photo", kind: "photo", title: "Roof and garage photo", filename: "DSC_0912.jpg", mime: "image/jpeg",
+    id: "doc-nguyen-roof-photo", preview: "/demo/nguyen-roof.jpg", kind: "photo", title: "Roof and garage photo", filename: "DSC_0912.jpg", mime: "image/jpeg",
     receivedAt: "2026-10-10",
     text: `[Vision caption]
 Single-story home at 6127 Bissonnet St. Roof: missing shingles along the ridge and exposed decking near the chimney.
@@ -181,7 +181,7 @@ A large oak tree has fallen across the detached garage, and the garage roof is c
 Photo metadata timestamp: 2026-10-10 11:20.`,
   }),
   doc({
-    id: "doc-nguyen-bedroom-photo", kind: "photo", title: "Back bedroom ceiling photo", filename: "DSC_0920.jpg", mime: "image/jpeg",
+    id: "doc-nguyen-bedroom-photo", preview: "/demo/nguyen-bedroom.jpg", kind: "photo", title: "Back bedroom ceiling photo", filename: "DSC_0920.jpg", mime: "image/jpeg",
     receivedAt: "2026-10-10",
     text: `[Vision caption]
 Back bedroom. The ceiling drywall sags with a brown stain, with rain intrusion to the back bedroom along the window wall.
@@ -296,3 +296,6 @@ export const DEMOS: Record<DemoId, Demo> = {
 
 /** Every follow-up document any demo can receive, by id: the only documents the server adds by id. */
 export const ALL_FOLLOW_UPS: CaseDocument[] = Object.values(DEMOS).flatMap((d) => d.followUps.map((f) => f.doc));
+
+/** Every paper of every sample household, by id: what a sample case may be handed. */
+export const ALL_SAMPLE_DOCS: CaseDocument[] = Object.values(DEMOS).flatMap((d) => [...d.documents, ...d.followUps.map((f) => f.doc)]);

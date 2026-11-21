@@ -20,7 +20,7 @@ function Arrow({ label, shown, delay }: { label?: string; shown: boolean; delay:
   return (
     <div aria-hidden className="flex flex-col items-center py-1 transition-opacity duration-500" style={{ opacity: shown ? 1 : 0, transitionDelay: `${delay}ms` }}>
       <span className="h-5 w-px bg-white/25" />
-      {label && <span className="my-1 rounded-full bg-night px-3 py-0.5 font-serif text-sm italic text-cream/60">{label}</span>}
+      {label && <span className="my-1 rounded-full bg-night px-3 py-0.5 text-xs text-cream/60">{label}</span>}
       {label && <span className="h-3 w-px bg-white/25" />}
       <svg width="12" height="8" viewBox="0 0 12 8" className="text-white/40"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
     </div>
@@ -47,7 +47,7 @@ export default function Flow({ f }: { f: Flowchart }) {
                   return (
                     <div key={ni} className={`rounded-[18px] border p-4 transition duration-500 ease-[cubic-bezier(.2,.8,.2,1)] ${TONE[tone]} ${seen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`}
                       style={{ transitionDelay: `${delay + ni * 120}ms` }}>
-                      {n.tag && <p className={`mb-1 font-serif text-sm italic ${TAG[tone]}`}>{n.tag}</p>}
+                      {n.tag && <p className={`mb-1 text-xs font-semibold ${TAG[tone]}`}>{n.tag}</p>}
                       <p className="font-semibold leading-snug text-cream">{n.title}</p>
                       {n.sub && <p className="mt-1 text-sm leading-relaxed text-cream/60">{n.sub}</p>}
                     </div>

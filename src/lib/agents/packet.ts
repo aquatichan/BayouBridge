@@ -5,7 +5,8 @@ import { NEED_EVIDENCE, PROGRAM_NEEDS } from "./recovery";
 
 // Packet Agent: drafts what would be sent for a pathway whose evidence is
 // complete. Pure and deterministic. A packet only ever goes to the sandbox
-// outbox, and only after a navigator approves it on the server.
+// outbox, and only after someone approves it on the server (a navigator, or
+// the household in the app).
 
 const list = (xs: string[], and: string) =>
   xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${and} ${xs[xs.length - 1]}`;

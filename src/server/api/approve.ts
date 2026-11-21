@@ -1,7 +1,5 @@
 import { approveTask } from "@/lib/store";
 
-export const dynamic = "force-dynamic";
-
 // POST /api/approve { caseId, taskId }: the only place a plan task can be
 // approved. Checked against the plan the server produced in its last run:
 // unknown case or task → 404, blocked task → 409, a task that sends nothing →

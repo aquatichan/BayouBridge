@@ -3,13 +3,13 @@ import { Geist, Newsreader } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-// Serif for accent words, kickers and the newspaper-style details page.
+// Serif for the newspaper-style details and privacy pages.
 const newsreader = Newsreader({ variable: "--font-newsreader", subsets: ["latin"], style: ["normal", "italic"], axes: ["opsz"] });
 
 export const metadata: Metadata = {
   title: "BayouBridge · Disaster-recovery casework",
   description:
-    "BayouBridge turns a storm-affected household's photos, letters and voice notes into organized evidence, matched recovery pathways and a tracked plan.",
+    "BayouBridge reads a family's storm paperwork, finds recovery programs that might fit, and drafts what to send. In English and Spanish.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

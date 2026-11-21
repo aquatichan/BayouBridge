@@ -4,6 +4,7 @@ import { DEMOS } from "@/data/demos";
 import { runCase, type Extractor, type RunHooks } from "@/lib/agents/coordinator";
 import { guessKind } from "@/lib/agents/evidence";
 import { extractWithClaude, readUpload } from "@/lib/agents/llmExtract";
+import { ExtractionError } from "@/lib/agents/util";
 import { addDocuments, createSessionCase, getCase, saveRun, type UploadedFile } from "@/lib/store";
 import type { CaseDocument, CaseState } from "@/lib/types";
 import { isTypedKind, TYPED_CHARS, TYPED_KINDS, type TypedKind } from "@/lib/typedKinds";
@@ -28,6 +29,13 @@ export type TypedDoc = { kind: TypedKind; text: string };
 /** Reading a photo or PDF takes longer than text, so session runs get more time per document. */
 const SESSION_LIMITS = { docMs: 45_000, runMs: 90_000, breakerAfter: 3 };
 
+/**
+ * Most Claude calls one case may make. Cases are anonymous, so this is what stops
+ * one browser tab (or a script) from re-running a case to spend the API key.
+ * Enough for every allowed upload to be read about three times.
+ */
+export const MAX_CLAUDE_READS = (UPLOAD_LIMITS.files + UPLOAD_LIMITS.typed + 1) * 3;
+
 export class CaseError extends Error {
   constructor(public status: 400 | 404 | 413 | 415, message: string) { super(message); }
 }
@@ -43,19 +51,35 @@ export function createUserCase(input: { name?: unknown; address?: unknown; langu
   return createSessionCase({ name: name || (language === "es" ? "Su hogar" : "Your household"), address, language, sample: false });
 }
 
-/** A private copy of one synthetic demo household (Reyes unless another is named). */
-export function createSampleCase(language: unknown, demo: unknown = "reyes"): string {
+/**
+ * A private copy of one synthetic demo household (Reyes unless another is named).
+ * `empty`: start with no papers; the app hands them to the person to drop in.
+ */
+export function createSampleCase(language: unknown, demo: unknown = "reyes", opts: { empty?: boolean } = {}): string {
   if (!isDemoId(demo)) throw new CaseError(400, "Unknown sample household.");
   const d = DEMOS[demo];
   return createSessionCase(
     { name: d.name, address: d.address, language: language === "es" ? "es" : "en", sample: true, demo },
-    d.documents.map((x) => ({ ...x, source: "sample" as const })),
+    opts.empty ? [] : d.documents.map((x) => ({ ...x, source: "sample" as const })),
   );
 }
 
 /** What the browser needs to act out a sample case's "a document arrives" moments. */
 export function sampleFollowUps(demo: DemoId | undefined) {
   return demo ? DEMOS[demo].followUps.map((f) => ({ id: f.doc.id, title: f.doc.title, provides: f.provides })) : [];
+}
+
+/**
+ * A sample household's papers, for the pile the app hands out: the first batch
+ * ("start") and the ones the family finds after the helpers ask ("later").
+ * No document text: the browser only needs to show and name them.
+ */
+export function samplePapers(demo: DemoId | undefined) {
+  if (!demo) return [];
+  const d = DEMOS[demo];
+  const card = (x: CaseDocument, stage: "start" | "later", provides?: string) =>
+    ({ id: x.id, title: x.title, kind: x.kind, filename: x.filename, preview: x.preview, stage, provides });
+  return [...d.documents.map((x) => card(x, "start")), ...d.followUps.map((f) => card(f.doc, "later", f.provides))];
 }
 
 const cleanName = (name: string) => name.split(/[\\/]/).pop()!.replace(/[^\w.\- ()]/g, "_").slice(0, 80) || "upload";
@@ -137,13 +161,17 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
   const { incremental, addDocumentIds, ...hooks } = opts;
   const rec = getCase(caseId);
   if (!rec?.profile) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
-  // A sample case can receive its own household's synthetic follow-up documents (the "a document arrives" moments).
+  // A sample case takes its own household's synthetic papers by id, in any order the person drops them.
   const demo = rec.profile.sample ? DEMOS[rec.profile.demo ?? "reyes"] : undefined;
   if (addDocumentIds?.length) {
     if (!demo) throw new CaseError(400, "Only the sample case takes sample documents.");
-    for (const { doc: d } of demo.followUps) {
+    const all = [...demo.documents, ...demo.followUps.map((f) => f.doc)];
+    for (const d of all) {
       if (addDocumentIds.includes(d.id) && !rec.documents.some((x) => x.id === d.id)) rec.documents.push({ ...d, source: "sample" });
     }
+    // Keep the household's own order, so results don't depend on the order of the drops.
+    const order = (id: string) => all.findIndex((d) => d.id === id);
+    rec.documents.sort((a, b) => order(a.id) - order(b.id));
   }
   if (!rec.documents.length) throw new CaseError(400, "Add a file or a few words about what happened first.");
   const p = rec.profile;
@@ -153,14 +181,18 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     address: p.address,
     disaster: demo ? demo.disaster : "Storm recovery case",
     today: demo ? DEMO_TODAY : today(),
-    documents: rec.documents,
+    documents: [...rec.documents],
     reuse: incremental ? rec.state?.extractions : undefined,
     limits: SESSION_LIMITS,
     approver: "household" as const, // in the consumer app the household approves what goes out
   };
   const files = rec.files;
-  // Uploaded files are read from their bytes; typed words and sample documents from their text.
-  const extractor: Extractor = (d, o) => {
+  // Uploaded files are read from their bytes; typed words from their text.
+  const extractor: Extractor = async (d, o) => {
+    // `?? 0`: a record kept across a dev-server reload may predate this counter.
+    const used = rec.claudeReads ?? 0;
+    if (used >= MAX_CLAUDE_READS) throw new ExtractionError("error", "this case has used up its Claude reads");
+    rec.claudeReads = used + 1;
     const file = files.get(d.id);
     return file ? readUpload(d, file, o) : extractWithClaude(d, o);
   };

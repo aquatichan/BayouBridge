@@ -19,10 +19,12 @@ export interface DemoRunOptions extends RunHooks {
    * set, documents already read in this case's last run are reused.
    */
   addDocumentIds?: string[];
+  /** Read with Claude when a key is set. The HTTP routes pass false: an anonymous request must not spend API credits. */
+  claude?: boolean;
 }
 
 export async function runDemoCase(opts: DemoRunOptions = {}): Promise<CaseState> {
-  const { addDocumentIds, ...hooks } = opts;
+  const { addDocumentIds, claude = true, ...hooks } = opts;
   const ids = [...new Set(addDocumentIds ?? [])];
   const unknown = ids.filter((id) => !followUpDocuments.some((d) => d.id === id));
   if (unknown.length) throw new UnknownDocumentError(`Unknown document id: ${unknown.join(", ")}`);
@@ -40,7 +42,7 @@ export async function runDemoCase(opts: DemoRunOptions = {}): Promise<CaseState>
     reuse,
   };
   let state: CaseState;
-  if (!claudeConfigured()) state = await runCase({ ...base, ...hooks });
+  if (!claude || !claudeConfigured()) state = await runCase({ ...base, ...hooks });
   else {
     try {
       state = await runCase({ ...base, ...hooks, extractor: extractWithClaude });

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { POST as approve } from "../src/app/api/approve/route";
-import { POST as createCase } from "../src/app/api/cases/route";
-import { DELETE as deleteCase, GET as getCase } from "../src/app/api/cases/[id]/route";
-import { POST as upload } from "../src/app/api/cases/[id]/documents/route";
-import { POST as stream } from "../src/app/api/run/stream/route";
+import { POST as approve } from "../src/server/api/approve";
+import { POST as createCase } from "../src/server/api/cases";
+import { DELETE as deleteCase, GET as getCase } from "../src/server/api/case";
+import { POST as upload } from "../src/server/api/documents";
+import { POST as stream } from "../src/server/api/stream";
 import { documents as sample } from "../src/data/household";
 import { runCase } from "../src/lib/agents/coordinator";
 import { fromUploadReading } from "../src/lib/agents/llmExtract";

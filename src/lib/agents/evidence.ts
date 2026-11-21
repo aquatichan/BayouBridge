@@ -1,10 +1,9 @@
 import { EQUIPMENT_RE, findEquipment, KIN_WORDS, relativeOf } from "@/lib/equipment";
 import { OCCUPANCY_KINDS, type CaseDocument, type EvidenceType, type ExtractionResult, type Fact, type FactType } from "@/lib/types";
 
-// Evidence Agent — rules-based extractor.
-// Works offline with no API key. When ANTHROPIC_API_KEY is set, the /api/run
-// route uses Claude for extraction instead (see ./llmExtract.ts) and falls
-// back to this on any error.
+// Evidence Agent, rules-based extractor. Works offline with no API key. With a
+// key, uploads are read by Claude (./llmExtract.ts) and fall back to this on any
+// error; this also backstops Claude's output (validate.ts fillFromRules).
 
 const MONTHS: Record<string, number> = {
   january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
@@ -170,9 +169,8 @@ export function extractWithRules(doc: CaseDocument): ExtractionResult {
   find(/(water line[^.]*|rain intrusion(?: to [a-z ]+)?|soaked)/i, (m, q) =>
     add("damage", "Interior water damage", m[1], q, "interior_water_damage", 0.85));
 
-  // Needs (voice note, either language)
-  // Powered medical equipment, and who uses it: the person named with an age in the same sentence.
-  // Who: a person named with an age in the same sentence, else the relative named there ("my husband").
+  // Powered medical equipment, in either language. Who uses it: a person named with an
+  // age in the same sentence, else the relative named there ("my husband").
   find(EQUIPMENT_RE, (m, q) => {
     const s = sentenceOf(t, m.index ?? 0);
     const who = s.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]+)(?: [A-ZÁÉÍÓÚ][a-záéíóúñ]+)?,? (?:tiene|is) (\d{1,3})\b/);

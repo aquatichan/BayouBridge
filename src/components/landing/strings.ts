@@ -1,28 +1,28 @@
-// Landing page copy, English and Spanish, in plain language. Headlines are
-// split into [before, accent, after]: the accent word is set in serif italic.
+// Landing page copy, English and Spanish.
 
 export type Lang = "en" | "es";
-export type Headline = [string, string, string];
 
 const en = {
-  nav: { how: "How it works", details: "The details", start: "Start a case" },
+  nav: { how: "How it works", example: "Try an example", details: "The details", start: "Start a case" },
   hero: {
     kicker: "For Houston families rebuilding after a storm",
-    title: ["Get the recovery help you’re ", "owed", "."] as Headline,
+    title: "See what storm help your family can apply for.",
     sub: "Snap photos of your damage and your letters. BayouBridge sorts them, finds help you may qualify for, and tells you the one thing to do next.",
     start: "Start a case",
+    example: "Try an example family",
+    exampleNote: "No sign-up. Made-up papers, nothing real is sent.",
     how: "See how it works",
     hint: "Scroll",
     stats: [
       { to: 60, suffix: " days", label: "to appeal a FEMA decision" },
-      { to: 2, prefix: "~", suffix: " hours", label: "of paperwork done for you" },
+      { to: 2, prefix: "~", suffix: " hours", label: "of paperwork saved per case (our estimate)" },
       { to: 0, suffix: "", label: "papers sent without your OK" },
     ],
     videoLabel: "A flooded Houston street at night, then someone sorting storm paperwork at a table.",
   },
   story: {
     kicker: "How it works",
-    title: ["Five helpers. One ", "case", "."] as Headline,
+    title: "Follow one family's case from start to finish.",
     note: "A made-up family, the Reyes household, shown here as an example.",
     loading: "Opening the office…",
     steps: {
@@ -54,24 +54,26 @@ const en = {
 type Strings = typeof en;
 
 const es: Strings = {
-  nav: { how: "Cómo funciona", details: "Los detalles", start: "Empezar un caso" },
+  nav: { how: "Cómo funciona", example: "Ver un ejemplo", details: "Los detalles", start: "Empezar un caso" },
   hero: {
     kicker: "Para familias de Houston que se recuperan de una tormenta",
-    title: ["Reciba la ayuda que le ", "corresponde", "."],
+    title: "Vea qué ayuda puede pedir su familia después de la tormenta.",
     sub: "Tome fotos de los daños y de sus cartas. BayouBridge las ordena, encuentra ayuda para la que podría calificar y le dice lo siguiente que debe hacer.",
     start: "Empezar un caso",
+    example: "Ver una familia de ejemplo",
+    exampleNote: "Sin registrarse. Papeles inventados, no se envía nada real.",
     how: "Ver cómo funciona",
     hint: "Deslice",
     stats: [
       { to: 60, suffix: " días", label: "para apelar una decisión de FEMA" },
-      { to: 2, prefix: "~", suffix: " horas", label: "de papeleo hecho por usted" },
+      { to: 2, prefix: "~", suffix: " horas", label: "de papeleo ahorrado por caso (estimado)" },
       { to: 0, suffix: "", label: "papeles enviados sin su permiso" },
     ],
     videoLabel: "Una calle inundada de Houston de noche y luego alguien ordenando papeles en una mesa.",
   },
   story: {
     kicker: "Cómo funciona",
-    title: ["Cinco ayudantes. Un ", "caso", "."],
+    title: "Siga el caso de una familia de principio a fin.",
     note: "Una familia inventada, el hogar Reyes, como ejemplo.",
     loading: "Abriendo la oficina…",
     steps: {

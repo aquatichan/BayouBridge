@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { POST as approve } from "../src/app/api/approve/route";
-import { GET as outbox } from "../src/app/api/outbox/route";
-import { POST as stream } from "../src/app/api/run/stream/route";
+import { POST as approve } from "../src/server/api/approve";
+import { GET as outbox } from "../src/server/api/outbox";
+import { POST as stream } from "../src/server/api/stream";
 import { runDemoCase } from "../src/lib/runDemo";
 
 // Route handlers called directly. The store is in-memory and per process, so

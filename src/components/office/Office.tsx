@@ -101,11 +101,22 @@ export default function Office({
         {MASCOTS.map((m) => {
           const s = snap.mascots.find((x) => x.id === m.id);
           const on = followed === m.id;
+          // What they're doing right now, as a speech bubble over the name tag. Idle helpers show just their name.
+          const doing = s && s.phase !== "idle" && s.label ? (s.phase === "walking" && s.station ? `${L("Heading to")} ${L(s.station)}: ${L(s.label)}` : L(s.label)) : null;
           return (
-            <div key={m.id} ref={label(`m:${m.id}`)} style={{ opacity: 0, ...(on ? { background: m.color } : {}) }}
-              className={`absolute left-0 top-0 max-w-[240px] truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm will-change-transform ${on ? "border-transparent text-night shadow-[0_0_18px_currentColor]" : "border-tide/20 bg-night/75 text-ink backdrop-blur-sm"}`}>
-              {L(m.name)}
-              {s?.label && <span className={`ml-1 font-normal ${on ? "text-night/75" : "text-muted"}`}>· {L(s.label)}</span>}
+            <div key={m.id} ref={label(`m:${m.id}`)} style={{ opacity: 0 }}
+              className="absolute left-0 top-0 flex w-max max-w-[220px] flex-col items-center gap-1 will-change-transform">
+              {doing && (
+                <span className="relative line-clamp-2 rounded-xl border bg-night/90 px-2 py-1 text-center text-[11px] font-medium leading-tight text-ink shadow-[0_6px_20px_rgb(0_0_0/0.45)] backdrop-blur-sm"
+                  style={{ borderColor: m.color }}>
+                  {doing}
+                </span>
+              )}
+              <span style={on ? { background: m.color } : undefined}
+                className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-sm ${on ? "border-transparent text-night shadow-[0_0_18px_currentColor]" : "border-tide/20 bg-night/75 text-ink backdrop-blur-sm"}`}>
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: on ? "#06142b" : m.color }} />
+                {L(m.name)}
+              </span>
             </div>
           );
         })}

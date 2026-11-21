@@ -61,14 +61,14 @@ export const FLOWS: Record<Lang, { pipeline: Flowchart; fallback: Flowchart; bil
     fallback: {
       title: "Flowchart 2. When the AI stumbles",
       rows: [
-        { nodes: [{ title: "Ask Claude to read one paper", sub: "12 seconds per request, no retries", tone: "plain" }] },
+        { nodes: [{ title: "Ask Claude to read one paper", sub: "12 seconds for text, 40 for a photo or PDF, no retries", tone: "plain" }] },
         { nodes: [
           { tag: "In time, passes the checks", title: "Keep Claude’s details", sub: "Add anything the rules found that Claude missed" },
           { tag: "Too slow, refused, fails the checks or errors", title: "Rules reader takes over this paper", sub: "The activity log says why", tone: "sun" },
         ], edge: "count the failures in this run" },
         { nodes: [
-          { tag: "Fewer than 2 (3 for your uploads)", title: "Next paper asks Claude as usual" },
-          { tag: "2 or more (3 for your uploads)", title: "Circuit breaker trips", sub: "In-flight requests are cancelled; every remaining paper goes to the rules reader", tone: "sun" },
+          { tag: "Fewer than 3", title: "Next paper asks Claude as usual" },
+          { tag: "3 or more", title: "Circuit breaker trips", sub: "In-flight requests are cancelled; every remaining paper goes to the rules reader", tone: "sun" },
         ] },
         { nodes: [{ title: "The run always finishes", sub: "A step that fails carries on with a safe default and a warning, or skips what depends on it", tone: "tide" }] },
       ],
@@ -119,14 +119,14 @@ export const FLOWS: Record<Lang, { pipeline: Flowchart; fallback: Flowchart; bil
     fallback: {
       title: "Diagrama 2. Cuando la IA tropieza",
       rows: [
-        { nodes: [{ title: "Pedir a Claude que lea un papel", sub: "12 segundos por solicitud, sin reintentos", tone: "plain" }] },
+        { nodes: [{ title: "Pedir a Claude que lea un papel", sub: "12 segundos para texto, 40 para una foto o PDF, sin reintentos", tone: "plain" }] },
         { nodes: [
           { tag: "A tiempo y pasa las revisiones", title: "Se conservan los datos de Claude", sub: "Se agrega lo que las reglas hallaron y Claude no" },
           { tag: "Tarda, lo rechaza, no pasa las revisiones o falla", title: "El lector de reglas toma el papel", sub: "El registro dice por qué", tone: "sun" },
         ], edge: "se cuentan las fallas de la corrida" },
         { nodes: [
-          { tag: "Menos de 2 (3 con sus archivos)", title: "El siguiente papel le pregunta a Claude" },
-          { tag: "2 o más (3 con sus archivos)", title: "Salta el interruptor", sub: "Se cancelan las solicitudes en curso; el resto va al lector de reglas", tone: "sun" },
+          { tag: "Menos de 3", title: "El siguiente papel le pregunta a Claude" },
+          { tag: "3 o más", title: "Salta el interruptor", sub: "Se cancelan las solicitudes en curso; el resto va al lector de reglas", tone: "sun" },
         ] },
         { nodes: [{ title: "La corrida siempre termina", sub: "Un paso que falla sigue con un valor seguro y un aviso, o omite lo que depende de él", tone: "tide" }] },
       ],
@@ -289,8 +289,8 @@ const en: Article = {
   title: "Under the Hood",
   deck: ["AI reads the paperwork. Plain rules make every decision,", "and nothing leaves without a person saying yes."],
   ticker: [
-    "6 papers in the example case", "5 kinds of help checked", "12-second request limit", "15 seconds per paper, then rules take over",
-    "2 strikes and the AI steps aside", "60-day FEMA appeal clock", "142 minutes of casework, estimated", "39 automated tests", "files deleted after 2 hours",
+    "6 papers in the example case", "5 kinds of help checked", "12-second request limit", "45 seconds per paper, then rules take over",
+    "after 3 failures, rules read the rest", "60-day FEMA appeal clock", "142 minutes of casework, estimated", "71 automated tests", "files deleted after 2 hours",
   ],
   sections: [
     {
@@ -299,7 +299,7 @@ const en: Article = {
       paragraphs: [
         "Every photo, letter or note becomes a document with text. For a typed note that text is yours. For a photo or a PDF, the Evidence Agent sends the file to Claude (Anthropic's Opus 5.5 model, effort set to low) and asks for four things back in a fixed shape: what kind of document it is, a short title, its language, and the lines that matter for disaster recovery copied exactly as written: names, addresses, dates, amounts, decisions, deadlines, claim and policy numbers. A photo of damage with no printed words gets two to five plain sentences describing what is visible.",
         "Claude then lists facts from that text. Each fact has a type (date of loss, money, damage, need, deadline and ten others), a label, a value, a machine-friendly normalized value and the exact quote it came from. The answer is checked against a schema before BayouBridge uses it; anything that doesn't fit the schema is treated as a failed read.",
-        "Text documents in the example case are read the same way. With no API key on the server, a rules-based reader does the job instead: a set of patterns that finds the same kinds of facts in English and Spanish, so the demo works fully offline.",
+        "The made-up example families are always read by a rules-based reader instead: a set of patterns that finds the same kinds of facts in English and Spanish. So the demo never waits on a model and works with no internet. With no API key on the server, the rules reader reads your own case too, but it can only read typed text, not photos or PDFs.",
       ],
     },
     {
@@ -314,21 +314,19 @@ const en: Article = {
       heading: "What if the AI is slow, wrong or offline?",
       flow: FLOWS.en.fallback,
       paragraphs: [
-        "Each request to Claude has a 12-second limit and no automatic retries. On top of that, the coordinator gives each paper 15 seconds and the whole run 30 seconds of AI time. Reading a photo or PDF gets 40 seconds per request, and in a case you start yourself each paper gets 45 seconds and the run 90. When a read times out, is refused, returns something that fails the checks, or errors, that one paper falls back to the rules reader and the activity log says why.",
-        "After two fallbacks in one run (three for real uploads) a circuit breaker trips: calls still in flight are cancelled and every remaining paper goes straight to rules. A bad key falls back in a fraction of a second; an unreachable server in about ten. And if a whole step of the pipeline ever throws, the run continues: steps with a safe default (no conflicts, an empty map, no drafts) carry on with a warning, steps without one skip what depends on them, and the run always finishes.",
+        "Each request to Claude has a limit, 12 seconds for text and 40 for a photo or PDF, and no automatic retries. On top of that, the coordinator gives each paper 45 seconds and the whole run 90 seconds of AI time. When a read times out, is refused, returns something that fails the checks, or errors, that one paper falls back to the rules reader and the activity log says why.",
+        "After three fallbacks in one run a circuit breaker trips: calls still in flight are cancelled and every remaining paper goes straight to rules. A bad key falls back in a fraction of a second; an unreachable server in about ten. And if a whole step of the pipeline ever throws, the run continues: steps with a safe default (no conflicts, an empty map, no drafts) carry on with a warning, steps without one skip what depends on them, and the run always finishes.",
       ],
       figure: {
         title: "Figure 1. Seconds the AI gets before rules take over",
-        legend: ["Example case, typed text", "Your own case, photos and PDFs"],
+        legend: ["One request to Claude", "The coordinator's limit"],
         bars: [
-          { label: "One request, text", value: 12, display: "12 s", tone: "tide" },
-          { label: "One request, photo or PDF", value: 40, display: "40 s", tone: "sun" },
-          { label: "One paper, example", value: 15, display: "15 s", tone: "tide" },
-          { label: "One paper, your case", value: 45, display: "45 s", tone: "sun" },
-          { label: "Whole run, example", value: 30, display: "30 s", tone: "tide" },
-          { label: "Whole run, your case", value: 90, display: "90 s", tone: "sun" },
+          { label: "One request, typed text", value: 12, display: "12 s", tone: "tide" },
+          { label: "One request, photo or PDF", value: 40, display: "40 s", tone: "tide" },
+          { label: "One paper", value: 45, display: "45 s", tone: "sun" },
+          { label: "Whole run", value: 90, display: "90 s", tone: "sun" },
         ],
-        note: "Papers are read in parallel, so the worst case is about one paper's limit, not the sum. Two failures (three for uploads) send every remaining paper to the rules reader.",
+        note: "Papers are read in parallel, so the worst case is about one paper's limit, not the sum. Three failures send every remaining paper to the rules reader. The example families never call Claude.",
       },
     },
     {
@@ -382,7 +380,7 @@ const en: Article = {
     {
       heading: "Where do my papers go?",
       paragraphs: [
-        "Into the memory of one server, and nowhere else: no database and no files on disk. Each case has a random id that can’t be guessed, expires two hours after its last use, and can be deleted at once. At most 200 cases are kept. Uploads are limited to 10 files of 8 MB each, as JPEG, PNG, WebP, GIF, PDF or plain text, and photos are shrunk to 1,600 pixels in your browser before they are sent, which also strips their location data. Document text is never written to the logs. With a key set, photos and PDFs are sent to Anthropic's API to be read; without one they are not read at all, and the case says so.",
+        "Into the memory of one server, and nowhere else: no database and no files on disk. Each case has a random id that can’t be guessed, expires two hours after its last use, and can be deleted at once. At most 200 cases are kept, and each case can make at most 63 AI reads, so no one can rerun a case to run up the bill. Uploads are limited to 10 files of 8 MB each, as JPEG, PNG, WebP, GIF, PDF or plain text, and photos are shrunk to 1,600 pixels in your browser before they are sent, which also strips their location data. Document text is never written to the logs. With a key set, photos and PDFs are sent to Anthropic's API to be read; without one they are not read at all, and the case says so.",
       ],
     },
     {
@@ -430,7 +428,7 @@ const en: Article = {
     {
       heading: "How do we know it works?",
       paragraphs: [
-        "Thirty-nine automated tests run in about five seconds without any network. A golden snapshot pins every line of the example case's output, from facts to plan to cover notes, so wording can't drift by accident. Other tests feed the AI path fake answers: one that never replies, one that invents a quote, one with broken dates, one with nothing at all. They check the approval rules and the live stream, make a step fail on purpose, and run a second made-up family through the same code to prove nothing about the Reyes family is built in.",
+        "Seventy-one automated tests run in about five seconds without any network. A golden snapshot pins every line of the example case's output, from facts to plan to cover notes, so wording can't drift by accident. Other tests feed the AI path fake answers: one that never replies, one that invents a quote, one with broken dates, one with nothing at all. They check the approval rules and the live stream, make a step fail on purpose, and run a second made-up family through the same code to prove nothing about the Reyes family is built in.",
       ],
     },
   ],
@@ -443,8 +441,8 @@ const es: Article = {
   title: "Por Dentro",
   deck: ["La IA lee los papeles. Reglas sencillas toman cada decisión,", "y nada sale sin que una persona diga que sí."],
   ticker: [
-    "6 papeles en el caso de ejemplo", "5 tipos de ayuda revisados", "12 segundos por solicitud", "15 segundos por papel y luego entran las reglas",
-    "2 fallas y la IA se hace a un lado", "60 días para apelar a FEMA", "142 minutos de trabajo, estimados", "39 pruebas automáticas", "archivos borrados a las 2 horas",
+    "6 papeles en el caso de ejemplo", "5 tipos de ayuda revisados", "12 segundos por solicitud", "45 segundos por papel y luego entran las reglas",
+    "tras 3 fallas, las reglas leen el resto", "60 días para apelar a FEMA", "142 minutos de trabajo, estimados", "71 pruebas automáticas", "archivos borrados a las 2 horas",
   ],
   sections: [
     {
@@ -453,7 +451,7 @@ const es: Article = {
       paragraphs: [
         "Cada foto, carta o nota se convierte en un documento con texto. Si es una nota escrita, el texto es suyo. Si es una foto o un PDF, el Agente de Evidencia envía el archivo a Claude (el modelo Opus 5.5 de Anthropic, con esfuerzo bajo) y le pide cuatro cosas en un formato fijo: qué tipo de documento es, un título corto, su idioma y las líneas que importan para la recuperación, copiadas tal como están: nombres, direcciones, fechas, montos, decisiones, plazos y números de reclamo y de póliza. Una foto de daños sin texto recibe de dos a cinco frases sencillas que describen lo que se ve.",
         "Luego Claude lista los datos de ese texto. Cada dato tiene un tipo (fecha del daño, dinero, daño, necesidad, plazo y diez más), una etiqueta, un valor, un valor normalizado y la cita exacta de donde salió. La respuesta se revisa contra un esquema antes de usarla; lo que no encaja se trata como una lectura fallida.",
-        "Los documentos de texto del caso de ejemplo se leen igual. Sin clave de API en el servidor, un lector basado en reglas hace el trabajo: patrones que encuentran los mismos tipos de datos en inglés y en español, así que la demostración funciona sin internet.",
+        "Las familias inventadas del ejemplo siempre las lee un lector basado en reglas: patrones que encuentran los mismos tipos de datos en inglés y en español. Así la demostración nunca espera a un modelo y funciona sin internet. Sin clave de API en el servidor, el lector de reglas también lee su propio caso, pero solo texto escrito, no fotos ni PDF.",
       ],
     },
     {
@@ -468,21 +466,19 @@ const es: Article = {
       heading: "¿Y si la IA tarda, se equivoca o no responde?",
       flow: FLOWS.es.fallback,
       paragraphs: [
-        "Cada solicitud a Claude tiene un límite de 12 segundos y ningún reintento. Además, el coordinador da a cada papel 15 segundos y a toda la corrida 30 segundos de IA. Leer una foto o un PDF tiene 40 segundos por solicitud, y en un caso que usted empieza cada papel tiene 45 segundos y la corrida 90. Si una lectura se pasa del tiempo, es rechazada, no pasa las revisiones o da error, ese papel pasa al lector de reglas y el registro dice por qué.",
-        "Tras dos fallas en una corrida (tres con archivos reales) salta un interruptor: se cancelan las solicitudes en curso y los papeles restantes van directo a las reglas. Una clave mala cae en una fracción de segundo; un servidor inaccesible, en unos diez. Y si un paso completo falla, la corrida sigue: los pasos con un valor seguro continúan con un aviso, los demás omiten lo que depende de ellos, y la corrida siempre termina.",
+        "Cada solicitud a Claude tiene un límite, 12 segundos para texto y 40 para una foto o PDF, y ningún reintento. Además, el coordinador da a cada papel 45 segundos y a toda la corrida 90 segundos de IA. Si una lectura se pasa del tiempo, es rechazada, no pasa las revisiones o da error, ese papel pasa al lector de reglas y el registro dice por qué.",
+        "Tras tres fallas en una corrida salta un interruptor: se cancelan las solicitudes en curso y los papeles restantes van directo a las reglas. Una clave mala cae en una fracción de segundo; un servidor inaccesible, en unos diez. Y si un paso completo falla, la corrida sigue: los pasos con un valor seguro continúan con un aviso, los demás omiten lo que depende de ellos, y la corrida siempre termina.",
       ],
       figure: {
         title: "Figura 1. Segundos que tiene la IA antes de que entren las reglas",
-        legend: ["Caso de ejemplo, texto", "Su propio caso, fotos y PDF"],
+        legend: ["Una solicitud a Claude", "El límite del coordinador"],
         bars: [
           { label: "Una solicitud, texto", value: 12, display: "12 s", tone: "tide" },
-          { label: "Una solicitud, foto o PDF", value: 40, display: "40 s", tone: "sun" },
-          { label: "Un papel, ejemplo", value: 15, display: "15 s", tone: "tide" },
-          { label: "Un papel, su caso", value: 45, display: "45 s", tone: "sun" },
-          { label: "Toda la corrida, ejemplo", value: 30, display: "30 s", tone: "tide" },
-          { label: "Toda la corrida, su caso", value: 90, display: "90 s", tone: "sun" },
+          { label: "Una solicitud, foto o PDF", value: 40, display: "40 s", tone: "tide" },
+          { label: "Un papel", value: 45, display: "45 s", tone: "sun" },
+          { label: "Toda la corrida", value: 90, display: "90 s", tone: "sun" },
         ],
-        note: "Los papeles se leen en paralelo, así que el peor caso es el límite de un papel, no la suma. Dos fallas (tres con archivos) mandan el resto al lector de reglas.",
+        note: "Los papeles se leen en paralelo, así que el peor caso es el límite de un papel, no la suma. Tres fallas mandan el resto al lector de reglas. Las familias de ejemplo nunca llaman a Claude.",
       },
     },
     {
@@ -536,7 +532,7 @@ const es: Article = {
     {
       heading: "¿A dónde van mis papeles?",
       paragraphs: [
-        "A la memoria de un servidor y a ningún otro lado: sin base de datos ni archivos en disco. Cada caso tiene un identificador aleatorio imposible de adivinar, vence dos horas después de su último uso y se puede borrar al instante. Se guardan como máximo 200 casos. Puede subir 10 archivos de hasta 8 MB, en JPEG, PNG, WebP, GIF, PDF o texto, y las fotos se reducen a 1.600 píxeles en su navegador antes de enviarse, lo que también borra su ubicación. El texto de los documentos nunca se escribe en los registros. Con una clave, las fotos y PDF se envían a la API de Anthropic para leerlos; sin ella no se leen, y el caso lo dice.",
+        "A la memoria de un servidor y a ningún otro lado: sin base de datos ni archivos en disco. Cada caso tiene un identificador aleatorio imposible de adivinar, vence dos horas después de su último uso y se puede borrar al instante. Se guardan como máximo 200 casos, y cada caso puede hacer como máximo 63 lecturas con IA, para que nadie pueda repetir un caso y gastar de más. Puede subir 10 archivos de hasta 8 MB, en JPEG, PNG, WebP, GIF, PDF o texto, y las fotos se reducen a 1.600 píxeles en su navegador antes de enviarse, lo que también borra su ubicación. El texto de los documentos nunca se escribe en los registros. Con una clave, las fotos y PDF se envían a la API de Anthropic para leerlos; sin ella no se leen, y el caso lo dice.",
       ],
     },
     {
@@ -584,7 +580,7 @@ const es: Article = {
     {
       heading: "¿Cómo sabemos que funciona?",
       paragraphs: [
-        "Treinta y nueve pruebas automáticas corren en unos cinco segundos sin internet. Una prueba de referencia fija cada línea del resultado del caso de ejemplo para que nada cambie por accidente. Otras le dan a la IA respuestas falsas: una que nunca contesta, una que inventa una cita, una con fechas rotas, una vacía. Revisan las reglas de aprobación y la transmisión en vivo, hacen fallar un paso a propósito y pasan a una segunda familia inventada por el mismo código para probar que nada de la familia Reyes está escrito a mano.",
+        "Setenta y una pruebas automáticas corren en unos cinco segundos sin internet. Una prueba de referencia fija cada línea del resultado del caso de ejemplo para que nada cambie por accidente. Otras le dan a la IA respuestas falsas: una que nunca contesta, una que inventa una cita, una con fechas rotas, una vacía. Revisan las reglas de aprobación y la transmisión en vivo, hacen fallar un paso a propósito y pasan a una segunda familia inventada por el mismo código para probar que nada de la familia Reyes está escrito a mano.",
       ],
     },
   ],

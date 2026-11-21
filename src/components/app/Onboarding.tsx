@@ -27,12 +27,12 @@ export function Welcome({ lang, onStart, onSample, busy }: { lang: Lang; onStart
   const t = STRINGS[lang];
   return (
     <Card>
-      <p className="font-serif text-lg italic text-tide">{t.tagline}</p>
+      <p className="text-sm font-semibold text-tide">{t.tagline}</p>
       <h1 className="mt-1 text-2xl font-bold leading-tight text-ink md:text-3xl">{t.welcomeTitle}</h1>
       <p className="mt-3 text-sm leading-relaxed text-muted">{t.welcomeBody}</p>
       <div className="mt-5 flex flex-wrap gap-2">
         <button className={primary} onClick={onStart} disabled={busy}>{t.start}</button>
-        <button className={secondary} onClick={onSample} disabled={busy}>{t.sample}</button>
+        <button className="rounded-full border-2 border-tide/70 bg-tide/10 px-5 py-2.5 text-sm font-semibold text-tide transition hover:bg-tide hover:text-night disabled:opacity-50" onClick={onSample} disabled={busy}>{t.sample}</button>
       </div>
       <p className="mt-2 text-xs text-muted">{t.sampleNote}</p>
       <p className="mt-4 border-t border-line pt-3 text-[11px] text-muted">{t.prototype}</p>
