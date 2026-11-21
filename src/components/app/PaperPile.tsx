@@ -113,13 +113,7 @@ export default function PaperPile({ lang, title, body, papers, busy, queued, onD
         <span className="text-[11px] text-muted">{busy ? t.dropWhileBusy : t.dropBoxHint}</span>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => drop(papers.map((p) => p.id))}
-          className="rounded-full bg-sun px-4 py-1.5 text-xs font-semibold text-night shadow-[0_6px_20px_rgb(245_181_68/0.25)] hover:brightness-105">
-          {t.dropAll(papers.length)}
-        </button>
-        {queued > 0 && <span className="text-[11px] font-medium text-amber">{t.queued(queued)}</span>}
-      </div>
+      {queued > 0 && <p className="mt-2 text-[11px] font-medium text-amber">{t.queued(queued)}</p>}
     </section>
   );
 }

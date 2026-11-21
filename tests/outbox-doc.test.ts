@@ -42,6 +42,6 @@ test("FEMA packets carry a filled-in occupancy declaration, and the recovery pac
   const items = s.plan.filter((t) => t.status === "needs_approval").map((t) => approveTask(id, t.id)).filter((r) => r.ok).map((r) => (r as { item: import("../src/lib/types").OutboxItem }).item);
   s = await runSessionCase(id, { incremental: true });
   const md = recoveryMarkdown(s, items, s.events, "es");
-  assert(md.includes("# Paquete de recuperación") && md.includes("Declaración de residencia") && md.includes("🦫"));
-  assert(recoveryHtml(s, items, s.events, "en").includes('aria-label="capybara"'));
+  assert(md.includes("# Paquete de recuperación") && md.includes("Declaración de residencia"));
+  assert(!recoveryHtml(s, items, s.events, "en").includes("<svg"), "no 2D drawings in the package");
 });

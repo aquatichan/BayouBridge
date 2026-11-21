@@ -74,13 +74,10 @@ export const packetFileName = (item: OutboxItem) =>
 
 const P = {
   en: { title: "Recovery package", ready: (n: number) => `${n}% of the documents the programs ask for are on file.`, steps: "Every step", done: "Done", approved: "Approved", waiting: "Waiting", todo: "To do",
-    programs: "Programs", log: "What the helpers did", packets: "Approved packets", sticker: "Packed with care by the BayouBridge capybara." },
+    programs: "Programs", log: "What the helpers did", packets: "Approved packets", sticker: "Packed with care by the BayouBridge team." },
   es: { title: "Paquete de recuperación", ready: (n: number) => `El ${n}% de los documentos que piden los programas está listo.`, steps: "Todos los pasos", done: "Listo", approved: "Aprobado", waiting: "En espera", todo: "Pendiente",
-    programs: "Programas", log: "Lo que hicieron los ayudantes", packets: "Paquetes aprobados", sticker: "Empacado con cariño por el capibara de BayouBridge." },
+    programs: "Programas", log: "Lo que hicieron los ayudantes", packets: "Paquetes aprobados", sticker: "Empacado con cariño por el equipo de BayouBridge." },
 };
-
-/** A tiny capybara, drawn inline: the hidden sticker the Teen Hacks organizers asked for. */
-const CAPYBARA = `<svg width="72" height="52" viewBox="0 0 72 52" aria-label="capybara"><ellipse cx="36" cy="32" rx="26" ry="15" fill="#a0703c"/><ellipse cx="58" cy="24" rx="11" ry="9" fill="#a0703c"/><ellipse cx="66" cy="25" rx="5" ry="4" fill="#7a5129"/><circle cx="58" cy="20" r="1.8" fill="#1b1b1b"/><ellipse cx="52" cy="15" rx="3" ry="2.2" fill="#7a5129"/><rect x="18" y="42" width="6" height="8" rx="2" fill="#7a5129"/><rect x="44" y="42" width="6" height="8" rx="2" fill="#7a5129"/><circle cx="40" cy="12" r="4" fill="#f5b544"/><path d="M40 8v-4" stroke="#4f7d4d" stroke-width="2"/></svg>`;
 
 function packageParts(s: CaseState, outbox: OutboxItem[], events: ActivityEvent[], lang: Lang) {
   const t = P[lang];
@@ -102,7 +99,7 @@ export function recoveryMarkdown(s: CaseState, outbox: OutboxItem[], events: Act
     `## ${t.steps}`, "", ...steps.map((x) => `- ${x}`), "",
     `## ${t.packets}`, "", ...outbox.flatMap((o) => [packetMarkdown(o, lang, s.householdName, title).replace(/^# /, "### "), ""]),
     `## ${t.log}`, "", ...log.map((x, i) => `${i + 1}. ${x}`), "",
-    `_🦫 ${t.sticker}_`, "",
+    `_${t.sticker}_`, "",
   ].join("\n");
 }
 
@@ -113,10 +110,10 @@ export function recoveryHtml(s: CaseState, outbox: OutboxItem[], events: Activit
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(t.title)}</title>
 <style>body{font:15px/1.6 Georgia,serif;color:#1b1b1b;background:#fff;max-width:760px;margin:40px auto;padding:0 20px}h1{font-size:26px;margin:0}h2{font-size:17px;margin:30px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
 h2.pk{border:0;margin-top:40px;font-size:19px;page-break-before:always}pre{white-space:pre-wrap;font:14px/1.6 Georgia,serif;background:#faf7ef;border:1px solid #e6dfcd;padding:14px}.note{color:#666;font-size:12px;font-style:italic}
-.sticker{display:flex;align-items:center;gap:10px;margin-top:36px;color:#7a5129;font-size:13px}ol li,ul li{margin:3px 0}</style></head><body>
+.sticker{margin-top:36px;color:#7a5129;font-size:13px}ol li,ul li{margin:3px 0}</style></head><body>
 <h1>${esc(t.title)}: ${esc(s.householdName)}</h1><p>${esc(s.address)}<br><b>${esc(t.ready(s.evidenceScore))}</b></p>
 <h2>${esc(t.programs)}</h2>${li(programs)}<h2>${esc(t.steps)}</h2>${li(steps)}
 ${packetBodies.join("\n")}
 <h2>${esc(t.log)}</h2><ol>${log.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
-<div class="sticker">${CAPYBARA}<span>${esc(t.sticker)}</span></div></body></html>`;
+<p class="sticker">${esc(t.sticker)}</p></body></html>`;
 }
