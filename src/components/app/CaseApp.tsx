@@ -114,7 +114,7 @@ export default function CaseApp({ start = "welcome", demo }: { start?: CaseAppSt
   const [approveError, setApproveError] = useState<string | null>(null);
   const [claudeOn, setClaudeOn] = useState<boolean | null>(null);
   const [menu, setMenu] = useState(false);
-  const director = useMemo(() => new OfficeDirector(), []);
+  const director = useMemo(() => Object.assign(new OfficeDirector(), { ambient: true }), []);
   const eventsRef = useRef<ActivityEvent[]>([]);
   useEffect(() => { eventsRef.current = events; }, [events]);
 

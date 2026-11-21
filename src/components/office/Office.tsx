@@ -187,4 +187,9 @@ const OFFICE_ES: Record<string, string> = {
   "Watching the busiest helper": "Mirando al ayudante más ocupado", Watching: "Mirando", "Heading to": "Va hacia",
   "The office": "La oficina", "Your helpers are at work. Tap one to watch.": "Sus ayudantes están trabajando. Toque uno para verlo.",
   "Everyone is at their desk.": "Todos están en su escritorio.", Auto: "Auto", "Whole office": "Toda la oficina",
+  "Reviewing the case board": "Revisando el tablero del caso", "Updating the plan": "Actualizando el plan", "Tidying the case map": "Ordenando el mapa del caso",
+  "Filing papers": "Archivando papeles", "Checking the mail tray": "Revisando la bandeja de correo", "Re-reading a letter": "Releyendo una carta",
+  "Double-checking quotes": "Revisando las citas", "Comparing notes": "Comparando notas", "Checking every quote is in the document": "Comprobando que cada cita esté en el documento",
+  "Checking program rules": "Revisando las reglas de los programas", "Looking up deadlines": "Buscando fechas límite", "Reading the FEMA appeal rules": "Leyendo las reglas de apelación de FEMA",
+  "Proofreading drafts": "Corrigiendo borradores", "Checking the practice outbox": "Revisando la bandeja de práctica", "Guarding the gate": "Cuidando el control",
 };

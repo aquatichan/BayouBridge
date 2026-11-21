@@ -7,6 +7,7 @@ import { KIND_FOR_EVIDENCE } from "@/lib/typedKinds";
 import { DropZone, FilePicker, TypedDocEditor, type TypedDoc } from "./Onboarding";
 import PaperPile, { PaperThumb, type SamplePaper } from "./PaperPile";
 import { tr } from "@/lib/es";
+import { packetFileName, packetHtml, packetMarkdown } from "@/lib/packetDoc";
 import { STRINGS, type Lang } from "./i18n";
 
 // The results panel next to the office. It fills in as the agents finish.
@@ -153,6 +154,7 @@ export default function CasePanel(props: {
             <b className="text-sm">{tr(o.packet.title, lang)}</b>
             <div className="text-muted">{t.to} {tr(o.packet.to, lang)} · {o.packet.attachments.map((a) => tr(a.title, lang)).join(", ")}</div>
             <p className="mt-1.5 rounded-lg bg-bg p-2 leading-relaxed">{o.packet.bilingualCover[lang]}</p>
+            <PacketActions item={o} lang={lang} s={s} />
           </article>
         )) : <Waiting>{t.outboxEmpty}</Waiting>)}
 
@@ -164,6 +166,34 @@ export default function CasePanel(props: {
   );
 }
 
+
+/** Open an approved packet as a readable document, download it as Markdown, or print it to PDF. */
+function PacketActions({ item, lang, s }: { item: OutboxItem; lang: Lang; s: CaseState | null }) {
+  const t = STRINGS[lang];
+  const household = s?.householdName ?? "";
+  const docTitle = (id: string) => s?.documents.find((d) => d.id === id)?.title ?? id;
+  const open = (print: boolean) => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(packetHtml(item, lang, household, docTitle));
+    w.document.close();
+    if (print) setTimeout(() => w.print(), 300); // let the written document lay out first
+  };
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([packetMarkdown(item, lang, household, docTitle)], { type: "text/markdown;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: packetFileName(item) });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const btn = "rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-ink hover:border-tide/60 hover:text-tide";
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      <button type="button" onClick={() => open(false)} className={btn}>📄 {t.openDoc}</button>
+      <button type="button" onClick={download} className={btn}>⬇ {t.downloadMd}</button>
+      <button type="button" onClick={() => open(true)} className={btn}>🖨 {t.savePdf}</button>
+    </div>
+  );
+}
 
 function Waiting({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">{children}</p>;
