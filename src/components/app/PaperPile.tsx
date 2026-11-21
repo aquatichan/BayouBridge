@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { tr } from "@/lib/es";
 import type { CaseDocument } from "@/lib/types";
 import { STRINGS, type Lang } from "./i18n";
@@ -60,6 +60,14 @@ export default function PaperPile({ lang, title, body, papers, busy, queued, onD
     setPicked(new Set());
     onDrop(ok);
   };
+  const anchor = useRef<number | null>(null);
+  /** Click selects one; shift-click selects everything from the last click to this one. */
+  const select = (i: number, shift: boolean) => {
+    if (shift && anchor.current !== null) {
+      const [a, b] = [Math.min(anchor.current, i), Math.max(anchor.current, i)];
+      setPicked(new Set(papers.slice(a, b + 1).map((p) => p.id)));
+    } else { anchor.current = i; toggle(papers[i].id); }
+  };
   const toggle = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   return (
@@ -80,7 +88,7 @@ export default function PaperPile({ lang, title, body, papers, busy, queued, onD
                   announceDrag(papers.filter((x) => ids.includes(x.id)).map((x) => x.kind));
                 }}
                 onDragEnd={() => announceDrag(null)}
-                onClick={() => toggle(p.id)}
+                onClick={(e) => select(i, e.shiftKey)}
                 className={`group flex w-full cursor-grab flex-col items-center gap-1 rounded-xl p-1.5 text-center outline-none transition active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-tide ${on ? "bg-tide/15 ring-1 ring-tide/60" : "hover:bg-white/5"}`}>
                 <span className="relative grid h-[86px] place-items-center transition-transform group-hover:-translate-y-1">
                   <PaperThumb p={p} seed={i + 1} lifted={on} />
@@ -110,7 +118,7 @@ export default function PaperPile({ lang, title, body, papers, busy, queued, onD
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="" className={`size-9 transition ${over ? "scale-110" : ""}`} />
         <span className="text-sm font-semibold text-ink">{picked.size ? t.dropSelected(picked.size) : t.dropBox}</span>
-        <span className="text-[11px] text-muted">{busy ? t.dropWhileBusy : t.dropBoxHint}</span>
+        <span className="text-[11px] text-muted">{busy ? t.dropWhileBusy : papers.length > 2 ? t.dropBoxHint + " " + t.shiftHint : t.dropBoxHint}</span>
       </div>
 
       {queued > 0 && <p className="mt-2 text-[11px] font-medium text-amber">{t.queued(queued)}</p>}
