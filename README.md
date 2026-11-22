@@ -4,7 +4,7 @@ After a hurricane, families in Houston end up with a pile of paperwork: a FEMA l
 
 BayouBridge sorts it. You give it photos, letters, bills and your own description of what happened, in English or Spanish. It pulls out the facts, finds recovery programs that might fit, says which papers are still missing, asks for the one that would help most, and drafts the packets and letters. Then it waits. Nothing is sent until a person approves it, and even then it only goes to a practice outbox. It only ever says a program is a *possible match*; the agency decides who qualifies.
 
-Built for [Teen Hacks Houston](https://tripleh.devpost.com/). Every household, document, company and storm in this repo is made up. "Hurricane Delfina" and "DR-9999-TX" don't exist.
+Every household, document, company and storm in this repo is made up. "Hurricane Delfina" and "DR-9999-TX" don't exist.
 
 ## Run it
 
@@ -62,11 +62,7 @@ Uploading your own papers requires agreeing to a consent screen first. Files are
 
 Limits per case: 10 files (8 MB each; JPEG, PNG, WebP, GIF, PDF or plain text), 10 typed documents, and 63 Claude reads. Cases are anonymous, so the read cap is what keeps someone from rerunning a case to spend the API key. Requests to `/api/run` without a case id run the shared demo case on the rules engine only.
 
-## Deploying
-
-It runs on Vercel as a normal Next.js app. Set `ANTHROPIC_API_KEY` in the project settings if you want photo and PDF reading.
-
-Cases live in server memory. Vercel can put route files in separate functions, each with its own memory (routes with different settings, like a longer time limit, always end up apart), so all API endpoints go through one route (`src/app/api/[...path]/route.ts`) to share one store. If Vercel still starts a fresh instance (after it sits idle, or under load), the case is gone: sample cases rebuild themselves from their papers, answers and approvals without the person noticing, but a "Start my case" case has to start over. A real deployment would need a shared store like Redis.
+---
 
 ## For developers
 
