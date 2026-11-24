@@ -4,7 +4,8 @@ import { addUploads, CaseError, parseTyped } from "@/lib/cases";
 //   files:     photos (JPEG, PNG, WebP, GIF), PDFs or text files, up to 10 per case, 8 MB each
 //   statement: what happened, in the household's own words (typed or dictated)
 //   typed:     JSON [{ kind, text }]: documents the household typed out instead of uploading
-// Files are kept in server memory with the case; nothing is written to disk.
+// Files are kept with the case in the encrypted case store (AES-256-GCM in Redis);
+// a server restart or a different serverless instance does not lose them.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = (await params).id;
   let form: FormData;

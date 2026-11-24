@@ -7,7 +7,7 @@ import { spanish } from "../src/lib/es";
 delete process.env.ANTHROPIC_API_KEY;
 
 test("a household's case speaks to the household, and its packets say who approved them", async () => {
-  const id = createUserCase({ consent: true, address: "4810 Lyons Ave, Houston, TX 77020", language: "es" });
+  const id = await createUserCase({ consent: true, address: "4810 Lyons Ave, Houston, TX 77020", language: "es" });
   await addUploads(id, [new File([new Uint8Array(20)], "foto.jpg", { type: "image/jpeg" })],
     "El huracán nos pegó el 9 de octubre y se llevó parte del techo. Somos dueños de la casa. Perdimos toda la comida, sin luz 4 días. FEMA nos negó la ayuda y tengo la carta.");
   const s = await runSessionCase(id);

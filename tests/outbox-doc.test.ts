@@ -8,9 +8,9 @@ import { approveTask } from "../src/lib/store";
 delete process.env.ANTHROPIC_API_KEY;
 
 test("an approved FEMA packet becomes a readable document, in both languages", async () => {
-  const id = createSampleCase("en", "nguyen");
+  const id = await createSampleCase("en", "nguyen");
   const s = await runSessionCase(id, { addDocumentIds: ["doc-nguyen-bank-statement"] });
-  const r = approveTask(id, "task:fema-appeal");
+  const r = await approveTask(id, "task:fema-appeal");
   assert(r.ok);
   const title = (d: string) => s.documents.find((x) => x.id === d)?.title ?? d;
   const md = packetMarkdown(r.item, "en", s.householdName, title);
@@ -34,12 +34,13 @@ test("with ambient on, idle helpers find background work; off, they stay put", (
 
 test("FEMA packets carry a filled-in occupancy declaration, and the recovery package bundles everything", async () => {
   const { recoveryHtml, recoveryMarkdown } = await import("../src/lib/packetDoc");
-  const id = createSampleCase("es", "johnson");
+  const id = await createSampleCase("es", "johnson");
   let s = await runSessionCase(id, { addDocumentIds: ["doc-johnson-lease", "doc-johnson-pediatrician"] });
   const fema = s.packets.find((p) => p.programId === "fema-appeal")!;
   assert(fema.form!.en.includes("Applicant: Denise Johnson") && fema.form!.en.includes("Amara"), fema.form!.en);
   assert(fema.form!.es.includes("DECLARACIÓN DE RESIDENCIA") && fema.form!.es.includes("Firma:"));
-  const items = s.plan.filter((t) => t.status === "needs_approval").map((t) => approveTask(id, t.id)).filter((r) => r.ok).map((r) => (r as { item: import("../src/lib/types").OutboxItem }).item);
+  const items: import("../src/lib/types").OutboxItem[] = [];
+  for (const t of s.plan.filter((x) => x.status === "needs_approval")) { const r = await approveTask(id, t.id); if (r.ok) items.push(r.item); }
   s = await runSessionCase(id, { incremental: true });
   const md = recoveryMarkdown(s, items, s.events, "es");
   assert(md.includes("# Paquete de recuperación") && md.includes("Declaración de residencia"));

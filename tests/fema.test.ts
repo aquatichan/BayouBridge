@@ -6,7 +6,7 @@ import { spanish } from "../src/lib/es";
 delete process.env.ANTHROPIC_API_KEY;
 
 test("an owner's FEMA appeal asks for ownership, not a contractor estimate, and drafts the signed letter", async () => {
-  const id = createSampleCase("en", "nguyen");
+  const id = await createSampleCase("en", "nguyen");
   let s = await runSessionCase(id, { addDocumentIds: ["doc-nguyen-bank-statement"] });
   const fema = s.matches.find((m) => m.programId === "fema-appeal")!;
   assert(fema.evidence.some((e) => e.type === "proof_of_ownership" && e.satisfiedBy.length));

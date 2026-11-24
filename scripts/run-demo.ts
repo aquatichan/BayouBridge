@@ -9,7 +9,7 @@ import { runDemoCase } from "../src/lib/runDemo";
 const which = process.argv[2] ?? "reyes";
 if (!isDemoId(which)) { console.error(`Unknown household "${which}". Use reyes, johnson or nguyen.`); process.exit(1); }
 const started = Date.now();
-(which === "reyes" ? runDemoCase() : runSessionCase(createSampleCase("en", which)))
+(which === "reyes" ? runDemoCase() : createSampleCase("en", which).then((id) => runSessionCase(id)))
   .then((s) => {
     for (const e of s.events) console.log(`[${e.agent}] ${e.action}: ${e.detail}`);
     console.log("\nPEOPLE", s.people);

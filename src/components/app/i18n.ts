@@ -15,7 +15,7 @@ const en = {
   prototype: "BayouBridge is a hackathon prototype. It suggests possible programs; only the agency decides if you qualify.",
   consentTitle: "Before you upload",
   consent: [
-    "Your files stay in this server's memory for up to 2 hours, then they're deleted. You can delete them sooner at any time.",
+    "Your files are stored encrypted for up to 2 hours after you last use your case, then they're deleted. You can delete them sooner at any time.",
     "To read your photos and letters, we send them to Claude, an AI made by Anthropic.",
     "Photos are shrunk on your device first. That also removes their location data.",
     "We never send anything to FEMA, your insurer or anyone else. What we draft waits for your OK, and in this prototype it only goes to a practice outbox.",
@@ -144,7 +144,7 @@ const es: Strings = {
   prototype: "BayouBridge es un prototipo de hackathon. Sugiere programas posibles; solo la agencia decide si usted califica.",
   consentTitle: "Antes de subir sus documentos",
   consent: [
-    "Sus archivos se guardan en la memoria de este servidor hasta 2 horas y luego se borran. Puede borrarlos antes cuando quiera.",
+    "Sus archivos se guardan cifrados hasta 2 horas después de su último uso y luego se borran. Puede borrarlos antes cuando quiera.",
     "Para leer sus fotos y cartas, las enviamos a Claude, una IA de Anthropic.",
     "Las fotos se reducen primero en su dispositivo. Eso también quita los datos de ubicación.",
     "Nunca enviamos nada a FEMA, a su aseguradora ni a nadie más. Lo que preparamos espera su permiso y, en este prototipo, solo va a una bandeja de práctica.",

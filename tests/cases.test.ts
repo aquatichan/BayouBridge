@@ -97,7 +97,7 @@ test("sample cases are private copies: approvals in one don't show up in another
   assert.equal(sa.matches.find((m) => m.programId === "fema-appeal")?.readiness, 0.5);
   const r = await approve(new Request("http://test/api/approve", { method: "POST", body: JSON.stringify({ caseId: a, taskId: "task:insurance-claim" }) }));
   assert.equal((await r.json()).item.approvedBy, "You");
-  assert(!storeGet(b)!.state!.plan.find((t) => t.id === "task:insurance-claim")?.approved);
+  assert(!(await storeGet(b))!.state!.plan.find((t) => t.id === "task:insurance-claim")?.approved);
 });
 
 test("delete forgets the case at once, and cases expire after 2 hours", async () => {
@@ -108,6 +108,6 @@ test("delete forgets the case at once, and cases expire after 2 hours", async ()
   const run = await stream(new Request("http://test/api/run/stream", { method: "POST", body: JSON.stringify({ caseId: id }) }));
   assert.equal(run.status, 404);
   const old = (await newCase({ consent: true, address: "512 Willow Creek Dr, Houston, TX 77016" })).body.caseId;
-  assert(storeGet(old, Date.now() + 1000));
-  assert.equal(storeGet(old, Date.now() + CASE_TTL_MS + 5000), undefined);
+  assert(await storeGet(old, Date.now() + 1000));
+  assert.equal(await storeGet(old, Date.now() + CASE_TTL_MS + 5000), undefined);
 });

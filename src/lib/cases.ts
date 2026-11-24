@@ -5,7 +5,7 @@ import { runCase, type Extractor, type RunHooks } from "@/lib/agents/coordinator
 import { guessKind } from "@/lib/agents/evidence";
 import { extractWithClaude, readUpload } from "@/lib/agents/llmExtract";
 import { ExtractionError } from "@/lib/agents/util";
-import { addDocuments, createSessionCase, getCase, saveRun, type UploadedFile } from "@/lib/store";
+import { addDocuments, addSampleDocuments, createSessionCase, getCase, readFile, reserveClaudeRead, saveRun, type UploadedFile } from "@/lib/store";
 import type { CaseDocument, CaseState } from "@/lib/types";
 import { isTypedKind, TYPED_CHARS, TYPED_KINDS, type TypedKind } from "@/lib/typedKinds";
 import { claudeConfigured } from "@/lib/runDemo";
@@ -42,7 +42,7 @@ export class CaseError extends Error {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function createUserCase(input: { name?: unknown; address?: unknown; language?: unknown; consent?: unknown }): string {
+export async function createUserCase(input: { name?: unknown; address?: unknown; language?: unknown; consent?: unknown }): Promise<string> {
   if (input.consent !== true) throw new CaseError(400, "Please agree to how BayouBridge handles your documents first.");
   const address = typeof input.address === "string" ? input.address.trim() : "";
   if (address.length < 5 || address.length > 200) throw new CaseError(400, "Please enter the address of the damaged home.");
@@ -55,7 +55,7 @@ export function createUserCase(input: { name?: unknown; address?: unknown; langu
  * A private copy of one synthetic demo household (Reyes unless another is named).
  * `empty`: start with no papers; the app hands them to the person to drop in.
  */
-export function createSampleCase(language: unknown, demo: unknown = "reyes", opts: { empty?: boolean } = {}): string {
+export async function createSampleCase(language: unknown, demo: unknown = "reyes", opts: { empty?: boolean } = {}): Promise<string> {
   if (!isDemoId(demo)) throw new CaseError(400, "Unknown sample household.");
   const d = DEMOS[demo];
   return createSessionCase(
@@ -105,7 +105,7 @@ export function parseTyped(raw: unknown): TypedDoc[] {
 
 /** Store uploaded files, typed documents and the household's own words on a case. Returns the new documents. */
 export async function addUploads(caseId: string, files: File[], statement?: string, typed: TypedDoc[] = []): Promise<CaseDocument[]> {
-  const rec = getCase(caseId);
+  const rec = await getCase(caseId);
   if (!rec?.profile) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
   if (rec.profile.sample) throw new CaseError(400, "The sample case uses synthetic documents only.");
   const existing = rec.documents.filter((d) => d.source === "upload").length;
@@ -149,7 +149,7 @@ export async function addUploads(caseId: string, files: File[], statement?: stri
     });
   }
   if (!added.length) throw new CaseError(400, "Add a file, type a document, or write a few words about what happened.");
-  addDocuments(caseId, added);
+  if (!(await addDocuments(caseId, added))) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
   return added.map((a) => a.doc);
 }
 
@@ -159,19 +159,15 @@ export async function addUploads(caseId: string, files: File[], statement?: stri
  */
 export async function runSessionCase(caseId: string, opts: { incremental?: boolean; addDocumentIds?: string[] } & RunHooks = {}): Promise<CaseState> {
   const { incremental, addDocumentIds, ...hooks } = opts;
-  const rec = getCase(caseId);
+  const rec = await getCase(caseId);
   if (!rec?.profile) throw new CaseError(404, "This case has expired or was deleted. Please start again.");
   // A sample case takes its own household's synthetic papers by id, in any order the person drops them.
   const demo = rec.profile.sample ? DEMOS[rec.profile.demo ?? "reyes"] : undefined;
   if (addDocumentIds?.length) {
     if (!demo) throw new CaseError(400, "Only the sample case takes sample documents.");
     const all = [...demo.documents, ...demo.followUps.map((f) => f.doc)];
-    for (const d of all) {
-      if (addDocumentIds.includes(d.id) && !rec.documents.some((x) => x.id === d.id)) rec.documents.push({ ...d, source: "sample" });
-    }
     // Keep the household's own order, so results don't depend on the order of the drops.
-    const order = (id: string) => all.findIndex((d) => d.id === id);
-    rec.documents.sort((a, b) => order(a.id) - order(b.id));
+    rec.documents = await addSampleDocuments(caseId, all.filter((d) => addDocumentIds.includes(d.id)).map((d) => ({ ...d, source: "sample" as const })), (id) => all.findIndex((d) => d.id === id));
   }
   if (!rec.documents.length) throw new CaseError(400, "Add a file or a few words about what happened first.");
   const p = rec.profile;
@@ -187,14 +183,10 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
     resolutions: rec.resolutions,
     approver: "household" as const, // in the consumer app the household approves what goes out
   };
-  const files = rec.files;
   // Uploaded files are read from their bytes; typed words from their text.
   const extractor: Extractor = async (d, o) => {
-    // `?? 0`: a record kept across a dev-server reload may predate this counter.
-    const used = rec.claudeReads ?? 0;
-    if (used >= MAX_CLAUDE_READS) throw new ExtractionError("error", "this case has used up its Claude reads");
-    rec.claudeReads = used + 1;
-    const file = files.get(d.id);
+    if (!(await reserveClaudeRead(caseId, MAX_CLAUDE_READS))) throw new ExtractionError("error", "this case has used up its Claude reads");
+    const file = await readFile(caseId, d.id, rec.files[d.id]);
     return file ? readUpload(d, file, o) : extractWithClaude(d, o);
   };
 
@@ -220,5 +212,5 @@ export async function runSessionCase(caseId: string, opts: { incremental?: boole
       ? `We couldn't read ${names}. Try a clearer photo, or type what it says with "Type a document".`
       : `Our photo reader is switched off right now, so ${names} ${unread.length === 1 ? "wasn't" : "weren't"} read. You can type what ${unread.length === 1 ? "it says" : "they say"} with "Type a document" instead.`);
   }
-  return saveRun(state);
+  return await saveRun(state);
 }

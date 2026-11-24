@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { addUploads, createUserCase, MAX_CLAUDE_READS, parseTyped, runSessionCase } from "../src/lib/cases";
 import { runRequested } from "../src/lib/runRequest";
-import { getCase } from "../src/lib/store";
+import { updateCase } from "../src/lib/store";
 import { isTypedKind } from "../src/lib/typedKinds";
 
 // A key is set, but nothing here may reach the network: each path below has to
@@ -17,9 +17,9 @@ test("an anonymous HTTP run of the shared demo case never calls Claude", async (
 });
 
 test("a case that used its Claude reads falls back to rules without calling the API", async () => {
-  const id = createUserCase({ address: "512 Willow Creek Dr, Houston, TX 77016", consent: true });
+  const id = await createUserCase({ address: "512 Willow Creek Dr, Houston, TX 77016", consent: true });
   await addUploads(id, [], "The storm ripped shingles off our roof on October 9, 2026. Rain came into the kitchen.");
-  getCase(id)!.claudeReads = MAX_CLAUDE_READS;
+  await updateCase(id, (r) => { r.claudeReads = MAX_CLAUDE_READS; });
   const s = await runSessionCase(id);
   assert.equal(s.extraction.claude, 0);
   assert(s.events.some((e) => e.action === "Fell back to rules" && /used up its Claude reads/.test(e.detail)));
