@@ -5,5 +5,5 @@ import { outbox } from "@/lib/store";
 export async function GET(req: Request) {
   const caseId = new URL(req.url).searchParams.get("caseId");
   if (!caseId) return Response.json({ error: "caseId is required" }, { status: 400 });
-  return Response.json({ items: outbox(caseId) });
+  return Response.json({ items: await outbox(caseId) });
 }

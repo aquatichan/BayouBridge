@@ -18,7 +18,7 @@ export async function readRunRequest(req: Request): Promise<RunRequest | { error
   const out: RunRequest = {};
   if (body.caseId !== undefined) {
     if (typeof body.caseId !== "string" || body.caseId.length > 100) return { error: "caseId must be a string", status: 400 };
-    if (!getCase(body.caseId)?.profile) return { error: "This case has expired or was deleted. Please start again.", status: 404 };
+    if (!(await getCase(body.caseId))?.profile) return { error: "This case has expired or was deleted. Please start again.", status: 404 };
     out.caseId = body.caseId;
     out.incremental = body.incremental === true;
   }

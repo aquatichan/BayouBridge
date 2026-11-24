@@ -35,7 +35,7 @@ async function play(demo: DemoId) {
     const r = await resolve(new Request("http://test/api/resolve", { method: "POST", body: JSON.stringify({ caseId, conflictId: c.id, value: c.values[0].value }) }));
     assert.equal(r.status, 200);
   }
-  for (const t of s.plan.filter((x) => x.status === "needs_approval")) assert(approveTask(caseId, t.id).ok, `${demo}: could not approve ${t.id}`);
+  for (const t of s.plan.filter((x) => x.status === "needs_approval")) assert((await approveTask(caseId, t.id)).ok, `${demo}: could not approve ${t.id}`);
   // One more run (as after any new document): answers and approvals must survive it.
   s = await runSessionCase(caseId, { incremental: true });
   states.push(s);

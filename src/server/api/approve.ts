@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   if (typeof body?.caseId !== "string" || typeof body?.taskId !== "string") {
     return Response.json({ error: "caseId and taskId are required" }, { status: 400 });
   }
-  const r = approveTask(body.caseId, body.taskId);
+  const r = await approveTask(body.caseId, body.taskId);
   if (!r.ok) return Response.json({ error: r.error }, { status: r.status });
   return Response.json({ already: r.already, task: r.task, events: r.events, item: r.item });
 }

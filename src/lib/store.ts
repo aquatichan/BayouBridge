@@ -1,15 +1,20 @@
 import type { ActivityEvent, CaseDocument, CaseState, OutboxItem, PlanTask } from "@/lib/types";
-import { loadEncrypted, persistenceEnabled, saveEncrypted } from "@/lib/persistentStore";
+import { getKv } from "@/lib/kv";
+import { seal, sealBytes, unseal, unsealBytes } from "@/lib/seal";
 
-// Persistent, encrypted case store.
+// The case store.
 //
-// Cases live in memory for speed, and are also written to an encrypted
-// file on the server's disk (src/lib/persistentStore.ts, data/cases.enc,
-// AES-256-GCM) after every change, so they survive a server restart on
-// that server. On start, the file is loaded back into memory. The demo
-// case (BB-0417, synthetic) and session cases are all persisted the same
-// way; session cases still expire CASE_TTL_MS after their last use, and
-// deleting a case deletes it from disk too.
+// Every case is one value in a key-value store (src/lib/kv.ts): Redis over
+// HTTP when it is configured, so every serverless instance sees the same
+// cases, or process memory when it isn't (local dev, tests). With Redis the
+// value is encrypted with AES-256-GCM before it leaves the server
+// (src/lib/seal.ts), and uploaded file bytes are encrypted and stored in
+// chunks under their own keys. Session cases get a native expiry that is
+// pushed out every time the case is used, so they vanish CASE_TTL_MS after
+// last use; "Delete my case" removes every key at once.
+//
+// Changes to a case take a short lock, then read, change and write the whole
+// record, so two requests (a double-clicked Approve) can't lose each other's update.
 //
 // Two kinds of case live here:
 // - the shared demo case (BB-0417, synthetic, used by scripts and the golden test), and
@@ -20,14 +25,14 @@ import { loadEncrypted, persistenceEnabled, saveEncrypted } from "@/lib/persiste
 //
 // Nothing in here is ever sent anywhere: no email, no submissions. Approved
 // packets go to the sandbox outbox only.
-//
-// Limit, stated plainly in the privacy page: the file lives on one
-// server's disk, so it does not share cases across separate serverless
-// function instances. A production deployment that needs that should
-// move to an external store.
 
 export const CASE_TTL_MS = 2 * 60 * 60 * 1000;
+/** Uploaded bytes outlive the case record a little, and are re-extended on use, so they never expire first. After a case ends they are unreachable and gone within this slack. */
+const FILE_TTL_MS = CASE_TTL_MS + 30 * 60 * 1000;
+const FILE_REFRESH_MS = 15 * 60 * 1000;
 const MAX_SESSION_CASES = 200;
+const CHUNK_CHARS = 400_000; // keeps every Redis request well under 1 MB
+const LOCK_MS = 10_000;
 
 export interface CaseProfile {
   name: string;
@@ -42,14 +47,17 @@ export interface CaseProfile {
 
 export interface UploadedFile { mime: string; data: Buffer }
 
-interface CaseRecord {
+/** Where a file's bytes are kept. The bytes themselves never sit in the case record. */
+export interface StoredFile { mime: string; chunks: number }
+
+export interface CaseRecord {
   /** The latest completed run, with approvals applied. Missing until the first run. */
   state?: CaseState;
   /** Session cases only. */
   profile?: CaseProfile;
   documents: CaseDocument[];
-  /** Raw bytes of uploaded files, by document id. Never sent to the browser. */
-  files: Map<string, UploadedFile>;
+  /** Uploaded files by document id. Read the bytes with readFile(). Never sent to the browser. */
+  files: Record<string, StoredFile>;
   approvals: Record<string, { by: string; at: string }>;
   /** The household's answers to "things that don't match", by conflict id. */
   resolutions: Record<string, string>;
@@ -58,152 +66,132 @@ interface CaseRecord {
   extraEvents: ActivityEvent[];
   /** Claude calls made for this case so far (see MAX_CLAUDE_READS in cases.ts). */
   claudeReads: number;
-  touchedAt: number;
+  /** When the file chunks' expiry was last pushed out. */
+  filesTouchedAt: number;
 }
 
-const g = globalThis as typeof globalThis & { __bayoubridgeStore?: Map<string, CaseRecord> };
-const cases = (g.__bayoubridgeStore ??= new Map<string, CaseRecord>());
+const kv = () => getKv();
+const caseKey = (id: string) => `bb:case:${id}`;
+const lockKey = (id: string) => `bb:lock:${id}`;
+const fileKey = (id: string, docId: string, n: number) => `bb:file:${id}:${docId}:${n}`;
+const SESSIONS = "bb:sessions";
+const ttlFor = (rec: Pick<CaseRecord, "profile">) => (rec.profile ? CASE_TTL_MS : undefined);
 
-// --- Encrypted persistence -------------------------------------------------
-// Uploaded file bytes are base64 inside the serialised JSON, so they are
-// encrypted at rest along with the rest of the case.
+const blank = (now: number): CaseRecord => ({ documents: [], files: {}, approvals: {}, resolutions: {}, outbox: [], extraEvents: [], claudeReads: 0, filesTouchedAt: now });
+const parse = (raw: string | null): CaseRecord | undefined => (raw === null ? undefined : { ...blank(0), ...(JSON.parse(unseal(raw)) as CaseRecord) });
+const fileKeys = (id: string, files: Record<string, StoredFile>) => Object.entries(files).flatMap(([docId, f]) => Array.from({ length: f.chunks }, (_, n) => fileKey(id, docId, n)));
 
-interface SerializedRecord {
-  state?: CaseState;
-  profile?: CaseProfile;
-  documents: CaseDocument[];
-  files: { id: string; mime: string; data: string }[];
-  approvals: Record<string, { by: string; at: string }>;
-  resolutions: Record<string, string>;
-  outbox: OutboxItem[];
-  extraEvents: ActivityEvent[];
-  claudeReads: number;
-  touchedAt: number;
-}
-
-function serializeCases(): string {
-  const entries: [string, SerializedRecord][] = [...cases.entries()].map(([id, rec]) => [
-    id,
-    {
-      state: rec.state,
-      profile: rec.profile,
-      documents: rec.documents,
-      files: [...rec.files.entries()].map(([fid, f]) => ({ id: fid, mime: f.mime, data: f.data.toString("base64") })),
-      approvals: rec.approvals,
-      resolutions: rec.resolutions,
-      outbox: rec.outbox,
-      extraEvents: rec.extraEvents,
-      claudeReads: rec.claudeReads,
-      touchedAt: rec.touchedAt,
-    },
-  ]);
-  return JSON.stringify(entries);
-}
-
-function deserializeCases(raw: string, now: number): void {
-  const entries = JSON.parse(raw) as [string, SerializedRecord][];
-  for (const [id, s] of entries) {
-    // Expired session cases are not resurrected on restart.
-    if (s.profile && now - s.touchedAt > CASE_TTL_MS) continue;
-    cases.set(id, {
-      state: s.state,
-      profile: s.profile,
-      documents: s.documents ?? [],
-      files: new Map((s.files ?? []).map((f) => [f.id, { mime: f.mime, data: Buffer.from(f.data, "base64") }])),
-      approvals: s.approvals ?? {},
-      resolutions: s.resolutions ?? {},
-      outbox: s.outbox ?? [],
-      extraEvents: s.extraEvents ?? [],
-      claudeReads: s.claudeReads ?? 0,
-      touchedAt: s.touchedAt,
-    });
+/** Run `fn` holding the case's lock, so read-change-write cycles on one case never interleave across requests or instances. */
+async function locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  let token: string | null = null;
+  for (let i = 0; i < 60 && !token; i++) {
+    token = await kv().lock(lockKey(id), LOCK_MS);
+    if (!token) await new Promise((r) => setTimeout(r, 50));
   }
+  if (!token) throw new Error("This case is busy. Please try again in a moment.");
+  try { return await fn(); } finally { await kv().unlock(lockKey(id), token); }
 }
 
-let loadedFromDisk = false;
+/** Change a case in one locked read-change-write. Returns what `fn` returns, or undefined when there is no such case. */
+export async function updateCase<T>(caseId: string, fn: (rec: CaseRecord) => T, now = Date.now()): Promise<T | undefined> {
+  return locked(caseId, async () => {
+    const rec = parse(await kv().get(caseKey(caseId), undefined, now));
+    if (!rec) return undefined;
+    const out = fn(rec);
+    await kv().set(caseKey(caseId), seal(JSON.stringify(rec)), ttlFor(rec), now);
+    return out;
+  });
+}
 
-/** Load saved cases once per process, on first use. A corrupt / wrong-key file logs and starts empty rather than crashing the server. */
-function ensureLoaded(now = Date.now()): void {
-  if (loadedFromDisk) return;
-  loadedFromDisk = true;
-  if (!persistenceEnabled()) return;
-  try {
-    const raw = loadEncrypted();
-    if (raw) deserializeCases(raw, now);
-  } catch (err) {
-    console.error("[BayouBridge] Could not load saved cases, starting empty:", err instanceof Error ? err.message : err);
+async function removeCase(caseId: string, rec: CaseRecord | undefined): Promise<void> {
+  await kv().del(caseKey(caseId), ...(rec ? fileKeys(caseId, rec.files) : []));
+  await kv().zrem(SESSIONS, caseId);
+}
+
+export async function createSessionCase(profile: Omit<CaseProfile, "createdAt">, documents: CaseDocument[] = [], now = Date.now()): Promise<string> {
+  // Keep the number of live session cases bounded: forget the ones that have aged out, then make room by dropping the oldest.
+  await kv().zremrangebyscore(SESSIONS, now - CASE_TTL_MS);
+  while ((await kv().zcard(SESSIONS)) >= MAX_SESSION_CASES) {
+    const oldest = await kv().zpopmin(SESSIONS);
+    if (!oldest) break;
+    await removeCase(oldest, parse(await kv().get(caseKey(oldest))));
   }
-}
-
-/** Write the whole in-memory store to the encrypted file. Best-effort: a disk failure logs and never fails the request. */
-function persist(): void {
-  if (!persistenceEnabled()) return;
-  try {
-    saveEncrypted(serializeCases());
-  } catch (err) {
-    console.error("[BayouBridge] Could not save cases:", err instanceof Error ? err.message : err);
-  }
-}
-
-/** Test-only: drop the in-memory store and force a reload from disk, simulating a server restart. */
-export function __clearMemoryForTests(): void {
-  cases.clear();
-  loadedFromDisk = false;
-}
-
-/** Test-only: force a reload from disk on next access. */
-export function __reloadForTests(): void {
-  loadedFromDisk = false;
-  ensureLoaded();
-}
-
-const blank = (now: number): Omit<CaseRecord, "documents"> => ({ files: new Map(), approvals: {}, resolutions: {}, outbox: [], extraEvents: [], claudeReads: 0, touchedAt: now });
-
-/** Drop session cases that haven't been used for CASE_TTL_MS. The shared demo case holds no personal data and stays. */
-function sweep(now: number) {
-  let dropped = false;
-  for (const [id, rec] of cases) if (rec.profile && now - rec.touchedAt > CASE_TTL_MS) { cases.delete(id); dropped = true; }
-  if (dropped) persist();
-}
-
-export function createSessionCase(profile: Omit<CaseProfile, "createdAt">, documents: CaseDocument[] = [], now = Date.now()): string {
-  ensureLoaded(now);
-  sweep(now);
-  const sessions = [...cases.entries()].filter(([, r]) => r.profile).sort((a, b) => a[1].touchedAt - b[1].touchedAt);
-  while (sessions.length >= MAX_SESSION_CASES) cases.delete(sessions.shift()![0]);
   const id = crypto.randomUUID();
-  cases.set(id, { ...blank(now), profile: { ...profile, createdAt: now }, documents });
-  persist();
+  const rec: CaseRecord = { ...blank(now), profile: { ...profile, createdAt: now }, documents };
+  await kv().set(caseKey(id), seal(JSON.stringify(rec)), CASE_TTL_MS, now);
+  await kv().zadd(SESSIONS, now, id);
   return id;
 }
 
-/** A session case, if it exists and hasn't expired. Using it keeps it alive. */
-export function getCase(caseId: string, now = Date.now()) {
-  ensureLoaded(now);
-  sweep(now);
-  const rec = cases.get(caseId);
-  if (rec) rec.touchedAt = now;
+/** A session case, if it exists and hasn't expired. Using it keeps it alive (and keeps its uploaded files alive with it). */
+export async function getCase(caseId: string, now = Date.now()): Promise<CaseRecord | undefined> {
+  const rec = parse(await kv().get(caseKey(caseId), CASE_TTL_MS, now));
+  if (!rec) return undefined;
+  if (rec.profile && Object.keys(rec.files).length && now - rec.filesTouchedAt > FILE_REFRESH_MS) {
+    await kv().pexpire(fileKeys(caseId, rec.files), FILE_TTL_MS);
+    rec.filesTouchedAt = now;
+    await updateCase(caseId, (r) => { r.filesTouchedAt = now; }, now);
+  }
   return rec;
 }
 
-export function addDocuments(caseId: string, docs: { doc: CaseDocument; file?: UploadedFile }[]) {
-  ensureLoaded();
-  const rec = cases.get(caseId);
-  if (!rec) return false;
-  for (const { doc, file } of docs) {
-    rec.documents.push(doc);
-    if (file) rec.files.set(doc.id, file);
+async function writeFile(caseId: string, docId: string, file: UploadedFile): Promise<StoredFile> {
+  const sealed = sealBytes(file.data);
+  const parts: string[] = [];
+  for (let i = 0; i < sealed.length; i += CHUNK_CHARS) parts.push(sealed.slice(i, i + CHUNK_CHARS));
+  if (!parts.length) parts.push("");
+  for (let i = 0; i < parts.length; i += 4) {
+    await Promise.all(parts.slice(i, i + 4).map((p, k) => kv().set(fileKey(caseId, docId, i + k), p, FILE_TTL_MS)));
   }
-  persist();
-  return true;
+  return { mime: file.mime, chunks: parts.length };
+}
+
+/** The bytes of one uploaded file, or undefined if it's gone. */
+export async function readFile(caseId: string, docId: string, meta: StoredFile | undefined): Promise<UploadedFile | undefined> {
+  if (!meta) return undefined;
+  const parts = await Promise.all(Array.from({ length: meta.chunks }, (_, n) => kv().get(fileKey(caseId, docId, n))));
+  if (parts.some((p) => p === null)) return undefined;
+  return { mime: meta.mime, data: unsealBytes(parts.join("")) };
+}
+
+export async function addDocuments(caseId: string, docs: { doc: CaseDocument; file?: UploadedFile }[]): Promise<boolean> {
+  const stored: Record<string, StoredFile> = {};
+  for (const { doc, file } of docs) if (file) stored[doc.id] = await writeFile(caseId, doc.id, file);
+  const ok = await updateCase(caseId, (rec) => {
+    for (const { doc } of docs) rec.documents.push(doc);
+    Object.assign(rec.files, stored);
+    return true;
+  });
+  if (!ok) await kv().del(...fileKeys(caseId, stored)); // the case vanished while uploading
+  return ok === true;
 }
 
 /** Forget a case and everything uploaded to it. */
-export function deleteCase(caseId: string): boolean {
-  ensureLoaded();
-  const deleted = cases.delete(caseId);
-  if (deleted) persist();
-  return deleted;
+export async function deleteCase(caseId: string): Promise<boolean> {
+  return locked(caseId, async () => {
+    const rec = parse(await kv().get(caseKey(caseId)));
+    if (!rec) return false;
+    await removeCase(caseId, rec);
+    return true;
+  });
+}
+
+/** Count one Claude read against this case's budget. False (and nothing counted) once `max` are used. */
+export async function reserveClaudeRead(caseId: string, max: number): Promise<boolean> {
+  return (await updateCase(caseId, (rec) => {
+    if ((rec.claudeReads ?? 0) >= max) return false;
+    rec.claudeReads = (rec.claudeReads ?? 0) + 1;
+    return true;
+  })) === true;
+}
+
+/** Add documents to a case if it doesn't have them yet, keeping `order`'s ordering. For sample households' papers. */
+export async function addSampleDocuments(caseId: string, docs: CaseDocument[], order: (id: string) => number): Promise<CaseDocument[]> {
+  return (await updateCase(caseId, (rec) => {
+    for (const d of docs) if (!rec.documents.some((x) => x.id === d.id)) rec.documents.push(d);
+    rec.documents.sort((a, b) => order(a.id) - order(b.id));
+    return [...rec.documents];
+  })) ?? [];
 }
 
 /** Carry earlier approvals onto a (possibly new) plan. Task ids are stable across runs. */
@@ -222,31 +210,30 @@ function withApprovals(state: CaseState, rec: Pick<CaseRecord, "approvals" | "ou
 }
 
 /** Store a finished run and return it with this case's approvals applied. */
-export function saveRun(state: CaseState, now = Date.now()): CaseState {
-  ensureLoaded(now);
-  const rec = cases.get(state.caseId);
-  if (!rec) {
-    cases.set(state.caseId, { ...blank(now), state, documents: state.documents });
-    persist();
-    return state;
-  }
-  rec.state = withApprovals(state, rec);
-  // Keeps what reading the files found out (kind, title, text), plus anything uploaded while the run was going.
-  rec.documents = [...state.documents, ...rec.documents.filter((d) => !state.documents.some((x) => x.id === d.id))];
-  rec.extraEvents = [];
-  rec.touchedAt = now;
-  persist();
-  return rec.state;
+export async function saveRun(state: CaseState, now = Date.now()): Promise<CaseState> {
+  return locked(state.caseId, async () => {
+    const rec = parse(await kv().get(caseKey(state.caseId), undefined, now));
+    if (!rec) {
+      // The shared demo case (no profile, never expires) is created by its first run.
+      const fresh: CaseRecord = { ...blank(now), state, documents: state.documents };
+      await kv().set(caseKey(state.caseId), seal(JSON.stringify(fresh)), undefined, now);
+      return state;
+    }
+    rec.state = withApprovals(state, rec);
+    // Keeps what reading the files found out (kind, title, text), plus anything uploaded while the run was going.
+    rec.documents = [...state.documents, ...rec.documents.filter((d) => !state.documents.some((x) => x.id === d.id))];
+    rec.extraEvents = [];
+    await kv().set(caseKey(state.caseId), seal(JSON.stringify(rec)), ttlFor(rec), now);
+    return rec.state;
+  });
 }
 
-export function lastRun(caseId: string): CaseState | undefined {
-  ensureLoaded();
-  return cases.get(caseId)?.state;
+export async function lastRun(caseId: string): Promise<CaseState | undefined> {
+  return parse(await kv().get(caseKey(caseId)))?.state;
 }
 
-export function outbox(caseId: string): OutboxItem[] {
-  ensureLoaded();
-  return cases.get(caseId)?.outbox ?? [];
+export async function outbox(caseId: string): Promise<OutboxItem[]> {
+  return parse(await kv().get(caseKey(caseId)))?.outbox ?? [];
 }
 
 export type ResolveResult =
@@ -258,25 +245,22 @@ export type ResolveResult =
  * The answer must be one of the values the documents state. It is kept with the case
  * and applied to every later run, like an approval.
  */
-export function resolveConflict(caseId: string, conflictId: string, value: string): ResolveResult {
-  ensureLoaded();
-  const rec = cases.get(caseId);
+export async function resolveConflict(caseId: string, conflictId: string, value: string): Promise<ResolveResult> {
+  return (await updateCase(caseId, (rec): ResolveResult => {
   if (!rec?.state) return { ok: false, status: 404, error: "Case not found. Run the agents first." };
   const conflict = rec.state.conflicts.find((c) => c.id === conflictId);
   if (!conflict) return { ok: false, status: 404, error: "Unknown task. The plan may have changed; run the agents again." };
   if (!conflict.values.some((v) => v.value === value)) return { ok: false, status: 400, error: "Please choose one of the values your documents show." };
-  // Cases kept in memory from before answers existed (a dev-server reload keeps the store) have none yet.
   (rec.resolutions ??= {})[conflictId] = value;
   rec.state = withApprovals(rec.state, rec);
-  rec.touchedAt = Date.now();
   const seq = rec.state.events.length + rec.extraEvents.length;
   const events: ActivityEvent[] = [{
     seq: seq + 1, agent: "Evidence Agent", action: "Conflict resolved",
     detail: `${conflict.field}: the household confirmed "${value}". It is used the next time the drafts are prepared.`, minutesSaved: 3,
   }];
   rec.extraEvents.push(...events);
-  persist();
   return { ok: true, state: rec.state, events };
+  })) ?? { ok: false, status: 404, error: "Case not found. Run the agents first." };
 }
 
 export type ApproveResult =
@@ -284,12 +268,11 @@ export type ApproveResult =
   | { ok: false; status: 400 | 404 | 409; error: string };
 
 /**
- * The approval gate. Only POST /api/approve calls this. Synchronous on
- * purpose: Node runs it start to finish, so two requests can't interleave.
+ * The approval gate. Only POST /api/approve calls this. The change runs under
+ * the case's lock, so two requests (a double click) can't both queue the packet.
  */
-export function approveTask(caseId: string, taskId: string): ApproveResult {
-  ensureLoaded();
-  const rec = cases.get(caseId);
+export async function approveTask(caseId: string, taskId: string): Promise<ApproveResult> {
+  return (await updateCase(caseId, (rec): ApproveResult => {
   if (!rec?.state) return { ok: false, status: 404, error: "Case not found. Run the agents first." };
   // In the consumer flow the household approves for themselves; the shared demo case (scripts) is a navigator.
   const by = rec.profile ? "You" : "Navigator (demo)";
@@ -325,6 +308,6 @@ export function approveTask(caseId: string, taskId: string): ApproveResult {
     },
   ];
   rec.extraEvents.push(...events);
-  persist();
   return { ok: true, already: false, task: { ...task, approved: true }, events, item };
+  })) ?? { ok: false, status: 404, error: "Case not found. Run the agents first." };
 }

@@ -37,7 +37,7 @@ test("an empty sample case filled by drops ends where a full sample case does", 
   await run(start.slice(2));
   const dropped = await run(start.slice(0, 2));
 
-  const full = await runSessionCase(createSampleCase("en", "johnson"));
+  const full = await runSessionCase(await createSampleCase("en", "johnson"));
   assert.deepEqual(dropped.documents.map((d) => d.id), full.documents.map((d) => d.id));
   assert.deepEqual(dropped.matches.map((m) => [m.programId, m.readiness]), full.matches.map((m) => [m.programId, m.readiness]));
   assert.deepEqual(dropped.plan.map((t) => t.id), full.plan.map((t) => t.id));

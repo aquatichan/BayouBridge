@@ -15,15 +15,19 @@ npm run dev        # http://localhost:3000
 
 No API key is needed. To let it read photos and PDFs, put `ANTHROPIC_API_KEY=...` in `.env.local`. That's the only environment variable required to run it.
 
-## Persistent, encrypted case storage
+## Case storage (Redis, encrypted)
 
-Cases used to live only in server memory — a restart wiped them. Now every case is also written to an encrypted file on the server's disk (`data/cases.enc`, AES-256-GCM, `src/lib/persistentStore.ts`), after every change, and loaded back on start. A restart on the same server no longer loses a case, its uploads, its approvals, or its outbox. Cases still expire 2 hours after last use, and "Delete my case" still deletes everything at once, from disk too.
+Every case is one value in a key-value store (`src/lib/kv.ts`, `src/lib/store.ts`):
 
-- `BAYOUBRIDGE_CASE_KEY` — optional. A 64-hex-char (32-byte) key, a base64 32-byte key, or any passphrase (derived with scrypt). Set this in production. Without it, the server generates a key once and saves it as `data/.case-key` (0600) — fine for local/dev, not a substitute for the env key in production.
-- `BAYOUBRIDGE_DATA_DIR` — optional, defaults to `./data`. `BAYOUBRIDGE_PERSISTENCE=off` disables disk storage entirely (memory only, as before).
-- `data/` is gitignored — never commit it; it can hold real household uploads.
+- **With Redis configured**, every serverless instance shares the same cases, so they survive restarts, redeploys and cold starts. Case records are encrypted with AES-256-GCM before they leave the server (`src/lib/seal.ts`), and uploaded file bytes are encrypted and stored in ~400 KB chunks. Session cases carry a native 2-hour expiry that is pushed out each time the case is used; "Delete my case" deletes every key at once. Changes take a short per-case lock, so a double-clicked Approve queues a packet once.
+- **Without Redis** (local dev, tests) it falls back to process memory, as before. Nothing is written to disk.
 
-Honest limit: the file lives on one server's disk, so it does not share cases across separate serverless function instances. A production deployment that needs that should move to an external store and keep the same encryption.
+Set these on Vercel (add Upstash Redis from the Marketplace, which sets the first two for you):
+
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (the `KV_REST_API_URL` / `KV_REST_API_TOKEN` names Vercel uses also work).
+- `BAYOUBRIDGE_CASE_KEY` — **required whenever Redis is used**; the server refuses to store a case without it. A 64-hex-char (32-byte) key, a base64 32-byte key, or any passphrase (stretched with scrypt). Keep it in the environment only. Lose it and existing cases can't be opened.
+
+Uploaded-file chunks expire 30 minutes after the case record would (and are re-extended while the case is in use), so they never vanish early; once a case is gone nothing can open them.
 
 Open `/case` and pick one of two paths.
 
@@ -68,7 +72,7 @@ The program rules are simplified for the demo and aren't official guidance. Each
 
 ## Privacy
 
-Uploading your own papers requires agreeing to a consent screen first. Files are kept in an encrypted file on the server's disk (AES-256-GCM, `data/cases.enc`) and are deleted after 2 hours of inactivity or as soon as you hit "Delete my case". A server restart no longer deletes them — they are loaded back, and still expire on the same 2-hour clock. Photos are shrunk in your browser before upload, which also strips location data. With a key set, photos and PDFs are sent to Anthropic to be read, and the app tells you that before you upload. Sample families never leave the server.
+Uploading your own papers requires agreeing to a consent screen first. Files are kept encrypted (AES-256-GCM) in Redis when it is configured, or in server memory when it isn't, and are deleted after 2 hours of inactivity or as soon as you hit "Delete my case". Photos are shrunk in your browser before upload, which also strips location data. With a key set, photos and PDFs are sent to Anthropic to be read, and the app tells you that before you upload. Sample families never leave the server.
 
 Limits per case: 10 files (8 MB each; JPEG, PNG, WebP, GIF, PDF or plain text), 10 typed documents, and 63 Claude reads. Cases are anonymous, so the read cap is what keeps someone from rerunning a case to spend the API key. Requests to `/api/run` without a case id run the shared demo case on the rules engine only.
 

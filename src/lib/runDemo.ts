@@ -30,7 +30,7 @@ export async function runDemoCase(opts: DemoRunOptions = {}): Promise<CaseState>
   if (unknown.length) throw new UnknownDocumentError(`Unknown document id: ${unknown.join(", ")}`);
   // Base documents first, then follow-ups in allow-list order, so the order is stable.
   const docs = [...documents, ...followUpDocuments.filter((d) => ids.includes(d.id))];
-  const reuse = ids.length ? lastRun(household.caseId)?.extractions : undefined;
+  const reuse = ids.length ? (await lastRun(household.caseId))?.extractions : undefined;
 
   const base = {
     caseId: household.caseId,
@@ -55,5 +55,5 @@ export async function runDemoCase(opts: DemoRunOptions = {}): Promise<CaseState>
     }
   }
   // The stored copy carries earlier approvals (task ids are stable across runs).
-  return saveRun(state);
+  return await saveRun(state);
 }

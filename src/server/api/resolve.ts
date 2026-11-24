@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   if (typeof body?.caseId !== "string" || typeof body?.conflictId !== "string" || typeof body?.value !== "string") {
     return Response.json({ error: "caseId, conflictId and value are required" }, { status: 400 });
   }
-  const r = resolveConflict(body.caseId, body.conflictId, body.value);
+  const r = await resolveConflict(body.caseId, body.conflictId, body.value);
   if (!r.ok) return Response.json({ error: r.error }, { status: r.status });
   return Response.json({ conflicts: r.state.conflicts, plan: r.state.plan, events: r.events });
 }
