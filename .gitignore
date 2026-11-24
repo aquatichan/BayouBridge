@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# BayouBridge case storage: encrypted on-disk cases + the local key file.
+# Never commit these — they can hold real household uploads.
+/data/
+
 # vercel
 .vercel
 

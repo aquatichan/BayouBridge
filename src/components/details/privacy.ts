@@ -11,12 +11,12 @@ const FLOW: Record<Lang, Flowchart> = {
     title: "Flowchart 1. Where your papers go",
     rows: [
       { nodes: [{ title: "Your device", sub: "A photo is shrunk to 1,600 px and re-saved, which drops its location", tone: "plain" }], edge: "sent to the server" },
-      { nodes: [{ title: "BayouBridge’s memory", sub: "A random case ID. No database, no files on disk." }] },
+      { nodes: [{ title: "BayouBridge’s encrypted file", sub: "A random case ID. Encrypted on disk (AES-256-GCM), no database." }] },
       { nodes: [
         { tag: "Only photos, PDFs and text, and only when the photo reader is on", title: "Claude, by Anthropic", sub: "Reads them and sends back what it found" },
         { tag: "Only after you approve", title: "Practice outbox", sub: "Drafts stay inside BayouBridge. Nothing goes to FEMA, insurers or anyone else." },
       ], edge: "then, whichever comes first" },
-      { nodes: [{ title: "Deleted", sub: "2 hours after you last use it, the moment you press “Delete my case”, or when the server restarts", tone: "sun" }] },
+      { nodes: [{ title: "Deleted", sub: "2 hours after you last use it, or the moment you press “Delete my case”. A server restart no longer deletes it.", tone: "sun" }] },
     ],
     note: "If you speak instead of type, your browser’s own speech service turns your voice into text before anything reaches BayouBridge.",
   },
@@ -24,12 +24,12 @@ const FLOW: Record<Lang, Flowchart> = {
     title: "Diagrama 1. A dónde van sus papeles",
     rows: [
       { nodes: [{ title: "Su dispositivo", sub: "Una foto se reduce a 1.600 px y se vuelve a guardar, lo que quita su ubicación", tone: "plain" }], edge: "enviado al servidor" },
-      { nodes: [{ title: "La memoria de BayouBridge", sub: "Un identificador de caso aleatorio. Sin base de datos ni archivos en disco." }] },
+      { nodes: [{ title: "El archivo cifrado de BayouBridge", sub: "Un identificador de caso aleatorio. Cifrado en disco (AES-256-GCM), sin base de datos." }] },
       { nodes: [
         { tag: "Solo fotos, PDF y texto, y solo si el lector de fotos está activo", title: "Claude, de Anthropic", sub: "Los lee y devuelve lo que encontró" },
         { tag: "Solo después de que usted apruebe", title: "Bandeja de práctica", sub: "Los borradores se quedan dentro de BayouBridge. Nada llega a FEMA, aseguradoras ni nadie más." },
       ], edge: "luego, lo que ocurra primero" },
-      { nodes: [{ title: "Borrado", sub: "2 horas después de su último uso, al instante con “Borrar mi caso”, o al reiniciar el servidor", tone: "sun" }] },
+      { nodes: [{ title: "Borrado", sub: "2 horas después de su último uso, o al instante con “Borrar mi caso”. Reiniciar el servidor ya no lo borra.", tone: "sun" }] },
     ],
     note: "Si habla en vez de escribir, el servicio de voz de su propio navegador convierte su voz en texto antes de que algo llegue a BayouBridge.",
   },
@@ -56,16 +56,16 @@ const en: Article = {
       heading: "Where is it kept, and for how long?",
       flow: FLOW.en,
       paragraphs: [
-        "In the memory of the one server that runs BayouBridge, and nowhere else. There is no database and nothing is written to disk. Your case lives under a random identifier that can’t be guessed.",
-        "Everything about your case, including every file, is deleted two hours after you last use it. You can delete it sooner at any moment with “Delete my case” in the menu, and it is gone at once. Restarting the server also wipes every case. To keep memory in check we hold at most 200 cases; if there are more, the least recently used is deleted first.",
+        "On the one server that runs BayouBridge, in an encrypted file on its disk (AES-256-GCM). There is no database. Your case lives under a random identifier that can’t be guessed.",
+        "Everything about your case, including every file, is deleted two hours after you last use it. You can delete it sooner at any moment with “Delete my case” in the menu, and it is gone at once — from disk too. Restarting the server no longer wipes cases: they are loaded back from the encrypted file, and still expire on the same two-hour clock. To keep memory in check we hold at most 200 cases; if there are more, the least recently used is deleted first.",
       ],
       figure: {
         title: "Figure 1. How long your case stays on our server",
         bars: [
           { label: "If you do nothing", value: 120, display: "2 hours", tone: "tide" },
           { label: "After “Delete my case”", value: 3, display: "Right away", tone: "sun" },
-          { label: "After a server restart", value: 3, display: "Right away", tone: "sun" },
-          { label: "Copies on disk or in a database", value: 3, display: "None, ever", tone: "sun" },
+          { label: "After a server restart", value: 120, display: "Still there", tone: "tide" },
+          { label: "Copies in a database", value: 3, display: "None, ever", tone: "sun" },
         ],
         note: "The two-hour clock restarts each time you use your case. Approved drafts are deleted with it.",
       },
@@ -124,16 +124,16 @@ const es: Article = {
       heading: "¿Dónde se guarda y por cuánto tiempo?",
       flow: FLOW.es,
       paragraphs: [
-        "En la memoria del único servidor que corre BayouBridge, y en ningún otro lugar. No hay base de datos y nada se escribe en disco. Su caso vive bajo un identificador aleatorio imposible de adivinar.",
-        "Todo lo de su caso, incluidos los archivos, se borra dos horas después de su último uso. Puede borrarlo antes en cualquier momento con “Borrar mi caso” en el menú, y desaparece al instante. Reiniciar el servidor también borra todos los casos. Guardamos como máximo 200 casos; si hay más, se borra primero el que lleva más tiempo sin usarse.",
+        "En el único servidor que corre BayouBridge, en un archivo cifrado en su disco (AES-256-GCM). No hay base de datos. Su caso vive bajo un identificador aleatorio imposible de adivinar.",
+        "Todo lo de su caso, incluidos los archivos, se borra dos horas después de su último uso. Puede borrarlo antes en cualquier momento con “Borrar mi caso” en el menú, y desaparece al instante, también del disco. Reiniciar el servidor ya no borra los casos: se cargan de nuevo desde el archivo cifrado y siguen con el mismo reloj de dos horas. Guardamos como máximo 200 casos; si hay más, se borra primero el que lleva más tiempo sin usarse.",
       ],
       figure: {
         title: "Figura 1. Cuánto tiempo queda su caso en el servidor",
         bars: [
           { label: "Si no hace nada", value: 120, display: "2 horas", tone: "tide" },
           { label: "Tras “Borrar mi caso”", value: 3, display: "Al instante", tone: "sun" },
-          { label: "Tras reiniciar el servidor", value: 3, display: "Al instante", tone: "sun" },
-          { label: "Copias en disco o base de datos", value: 3, display: "Ninguna, nunca", tone: "sun" },
+          { label: "Tras reiniciar el servidor", value: 120, display: "Sigue ahí", tone: "tide" },
+          { label: "Copias en base de datos", value: 3, display: "Ninguna, nunca", tone: "sun" },
         ],
         note: "El reloj de dos horas se reinicia cada vez que usa su caso. Los borradores aprobados se borran con él.",
       },

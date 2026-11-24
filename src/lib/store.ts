@@ -1,9 +1,15 @@
 import type { ActivityEvent, CaseDocument, CaseState, OutboxItem, PlanTask } from "@/lib/types";
+import { loadEncrypted, persistenceEnabled, saveEncrypted } from "@/lib/persistentStore";
 
-// Demo-grade, in-memory case store. It lives on globalThis so it survives
-// Next.js dev-server module reloads, and everything in it is gone when the
-// server restarts. There is deliberately no database and nothing is written
-// to disk.
+// Persistent, encrypted case store.
+//
+// Cases live in memory for speed, and are also written to an encrypted
+// file on the server's disk (src/lib/persistentStore.ts, data/cases.enc,
+// AES-256-GCM) after every change, so they survive a server restart on
+// that server. On start, the file is loaded back into memory. The demo
+// case (BB-0417, synthetic) and session cases are all persisted the same
+// way; session cases still expire CASE_TTL_MS after their last use, and
+// deleting a case deletes it from disk too.
 //
 // Two kinds of case live here:
 // - the shared demo case (BB-0417, synthetic, used by scripts and the golden test), and
@@ -14,6 +20,11 @@ import type { ActivityEvent, CaseDocument, CaseState, OutboxItem, PlanTask } fro
 //
 // Nothing in here is ever sent anywhere: no email, no submissions. Approved
 // packets go to the sandbox outbox only.
+//
+// Limit, stated plainly in the privacy page: the file lives on one
+// server's disk, so it does not share cases across separate serverless
+// function instances. A production deployment that needs that should
+// move to an external store.
 
 export const CASE_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_SESSION_CASES = 200;
@@ -53,24 +64,122 @@ interface CaseRecord {
 const g = globalThis as typeof globalThis & { __bayoubridgeStore?: Map<string, CaseRecord> };
 const cases = (g.__bayoubridgeStore ??= new Map<string, CaseRecord>());
 
+// --- Encrypted persistence -------------------------------------------------
+// Uploaded file bytes are base64 inside the serialised JSON, so they are
+// encrypted at rest along with the rest of the case.
+
+interface SerializedRecord {
+  state?: CaseState;
+  profile?: CaseProfile;
+  documents: CaseDocument[];
+  files: { id: string; mime: string; data: string }[];
+  approvals: Record<string, { by: string; at: string }>;
+  resolutions: Record<string, string>;
+  outbox: OutboxItem[];
+  extraEvents: ActivityEvent[];
+  claudeReads: number;
+  touchedAt: number;
+}
+
+function serializeCases(): string {
+  const entries: [string, SerializedRecord][] = [...cases.entries()].map(([id, rec]) => [
+    id,
+    {
+      state: rec.state,
+      profile: rec.profile,
+      documents: rec.documents,
+      files: [...rec.files.entries()].map(([fid, f]) => ({ id: fid, mime: f.mime, data: f.data.toString("base64") })),
+      approvals: rec.approvals,
+      resolutions: rec.resolutions,
+      outbox: rec.outbox,
+      extraEvents: rec.extraEvents,
+      claudeReads: rec.claudeReads,
+      touchedAt: rec.touchedAt,
+    },
+  ]);
+  return JSON.stringify(entries);
+}
+
+function deserializeCases(raw: string, now: number): void {
+  const entries = JSON.parse(raw) as [string, SerializedRecord][];
+  for (const [id, s] of entries) {
+    // Expired session cases are not resurrected on restart.
+    if (s.profile && now - s.touchedAt > CASE_TTL_MS) continue;
+    cases.set(id, {
+      state: s.state,
+      profile: s.profile,
+      documents: s.documents ?? [],
+      files: new Map((s.files ?? []).map((f) => [f.id, { mime: f.mime, data: Buffer.from(f.data, "base64") }])),
+      approvals: s.approvals ?? {},
+      resolutions: s.resolutions ?? {},
+      outbox: s.outbox ?? [],
+      extraEvents: s.extraEvents ?? [],
+      claudeReads: s.claudeReads ?? 0,
+      touchedAt: s.touchedAt,
+    });
+  }
+}
+
+let loadedFromDisk = false;
+
+/** Load saved cases once per process, on first use. A corrupt / wrong-key file logs and starts empty rather than crashing the server. */
+function ensureLoaded(now = Date.now()): void {
+  if (loadedFromDisk) return;
+  loadedFromDisk = true;
+  if (!persistenceEnabled()) return;
+  try {
+    const raw = loadEncrypted();
+    if (raw) deserializeCases(raw, now);
+  } catch (err) {
+    console.error("[BayouBridge] Could not load saved cases, starting empty:", err instanceof Error ? err.message : err);
+  }
+}
+
+/** Write the whole in-memory store to the encrypted file. Best-effort: a disk failure logs and never fails the request. */
+function persist(): void {
+  if (!persistenceEnabled()) return;
+  try {
+    saveEncrypted(serializeCases());
+  } catch (err) {
+    console.error("[BayouBridge] Could not save cases:", err instanceof Error ? err.message : err);
+  }
+}
+
+/** Test-only: drop the in-memory store and force a reload from disk, simulating a server restart. */
+export function __clearMemoryForTests(): void {
+  cases.clear();
+  loadedFromDisk = false;
+}
+
+/** Test-only: force a reload from disk on next access. */
+export function __reloadForTests(): void {
+  loadedFromDisk = false;
+  ensureLoaded();
+}
+
 const blank = (now: number): Omit<CaseRecord, "documents"> => ({ files: new Map(), approvals: {}, resolutions: {}, outbox: [], extraEvents: [], claudeReads: 0, touchedAt: now });
 
 /** Drop session cases that haven't been used for CASE_TTL_MS. The shared demo case holds no personal data and stays. */
 function sweep(now: number) {
-  for (const [id, rec] of cases) if (rec.profile && now - rec.touchedAt > CASE_TTL_MS) cases.delete(id);
+  let dropped = false;
+  for (const [id, rec] of cases) if (rec.profile && now - rec.touchedAt > CASE_TTL_MS) { cases.delete(id); dropped = true; }
+  if (dropped) persist();
 }
 
 export function createSessionCase(profile: Omit<CaseProfile, "createdAt">, documents: CaseDocument[] = [], now = Date.now()): string {
+  ensureLoaded(now);
   sweep(now);
   const sessions = [...cases.entries()].filter(([, r]) => r.profile).sort((a, b) => a[1].touchedAt - b[1].touchedAt);
   while (sessions.length >= MAX_SESSION_CASES) cases.delete(sessions.shift()![0]);
   const id = crypto.randomUUID();
   cases.set(id, { ...blank(now), profile: { ...profile, createdAt: now }, documents });
+  persist();
   return id;
 }
 
 /** A session case, if it exists and hasn't expired. Using it keeps it alive. */
 export function getCase(caseId: string, now = Date.now()) {
+  ensureLoaded(now);
   sweep(now);
   const rec = cases.get(caseId);
   if (rec) rec.touchedAt = now;
@@ -78,18 +187,23 @@ export function getCase(caseId: string, now = Date.now()) {
 }
 
 export function addDocuments(caseId: string, docs: { doc: CaseDocument; file?: UploadedFile }[]) {
+  ensureLoaded();
   const rec = cases.get(caseId);
   if (!rec) return false;
   for (const { doc, file } of docs) {
     rec.documents.push(doc);
     if (file) rec.files.set(doc.id, file);
   }
+  persist();
   return true;
 }
 
 /** Forget a case and everything uploaded to it. */
 export function deleteCase(caseId: string): boolean {
-  return cases.delete(caseId);
+  ensureLoaded();
+  const deleted = cases.delete(caseId);
+  if (deleted) persist();
+  return deleted;
 }
 
 /** Carry earlier approvals onto a (possibly new) plan. Task ids are stable across runs. */
@@ -109,9 +223,11 @@ function withApprovals(state: CaseState, rec: Pick<CaseRecord, "approvals" | "ou
 
 /** Store a finished run and return it with this case's approvals applied. */
 export function saveRun(state: CaseState, now = Date.now()): CaseState {
+  ensureLoaded(now);
   const rec = cases.get(state.caseId);
   if (!rec) {
     cases.set(state.caseId, { ...blank(now), state, documents: state.documents });
+    persist();
     return state;
   }
   rec.state = withApprovals(state, rec);
@@ -119,14 +235,17 @@ export function saveRun(state: CaseState, now = Date.now()): CaseState {
   rec.documents = [...state.documents, ...rec.documents.filter((d) => !state.documents.some((x) => x.id === d.id))];
   rec.extraEvents = [];
   rec.touchedAt = now;
+  persist();
   return rec.state;
 }
 
 export function lastRun(caseId: string): CaseState | undefined {
+  ensureLoaded();
   return cases.get(caseId)?.state;
 }
 
 export function outbox(caseId: string): OutboxItem[] {
+  ensureLoaded();
   return cases.get(caseId)?.outbox ?? [];
 }
 
@@ -140,6 +259,7 @@ export type ResolveResult =
  * and applied to every later run, like an approval.
  */
 export function resolveConflict(caseId: string, conflictId: string, value: string): ResolveResult {
+  ensureLoaded();
   const rec = cases.get(caseId);
   if (!rec?.state) return { ok: false, status: 404, error: "Case not found. Run the agents first." };
   const conflict = rec.state.conflicts.find((c) => c.id === conflictId);
@@ -155,6 +275,7 @@ export function resolveConflict(caseId: string, conflictId: string, value: strin
     detail: `${conflict.field}: the household confirmed "${value}". It is used the next time the drafts are prepared.`, minutesSaved: 3,
   }];
   rec.extraEvents.push(...events);
+  persist();
   return { ok: true, state: rec.state, events };
 }
 
@@ -167,6 +288,7 @@ export type ApproveResult =
  * purpose: Node runs it start to finish, so two requests can't interleave.
  */
 export function approveTask(caseId: string, taskId: string): ApproveResult {
+  ensureLoaded();
   const rec = cases.get(caseId);
   if (!rec?.state) return { ok: false, status: 404, error: "Case not found. Run the agents first." };
   // In the consumer flow the household approves for themselves; the shared demo case (scripts) is a navigator.
@@ -203,5 +325,6 @@ export function approveTask(caseId: string, taskId: string): ApproveResult {
     },
   ];
   rec.extraEvents.push(...events);
+  persist();
   return { ok: true, already: false, task: { ...task, approved: true }, events, item };
 }

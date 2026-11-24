@@ -5,7 +5,8 @@ import { getCase } from "@/lib/store";
 //   { sample: true, demo?, language, empty? }           a private copy of a synthetic sample household (reyes, johnson, nguyen);
 //                                                       with empty: true it starts with no papers and the app hands them out
 //   { name?, address, language, consent: true }         a new case for the household's own documents
-// Returns { caseId, profile, followUps, papers, documentCount }. Cases live in server memory only and expire after 2 hours.
+// Returns { caseId, profile, followUps, papers, documentCount }. Cases are
+// persisted encrypted on disk and survive a restart; they expire after 2 hours.
 export async function POST(req: Request) {
   const body = ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>;
   try {

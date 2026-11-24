@@ -190,7 +190,7 @@ export interface Packet {
   status: "draft" | "approved" | "queued";
 }
 
-/** A packet a navigator approved, held in the in-memory sandbox outbox. */
+/** A packet a navigator approved, held in the sandbox outbox (persisted with the case). */
 export interface OutboxItem {
   id: string;
   caseId: string;
